@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#101728" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>用量面板</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --text: #111827;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --accent: #4f7cff;
+    --accent-soft: rgba(79, 124, 255, .12);
+    --danger: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1220;
+      --surface: #131c2e;
+      --text: #e8ecf5;
+      --muted: #8b97ad;
+      --line: #223049;
+      --accent: #6f96ff;
+      --accent-soft: rgba(111, 150, 255, .16);
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    padding: env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 12px);
+  }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(14px + env(safe-area-inset-top)) 16px 14px 16px;
+    margin-top: calc(-1 * env(safe-area-inset-top));
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  header .mark {
+    width: 28px; height: 28px; border-radius: 8px; background: var(--text);
+    display: grid; place-items: center; color: var(--bg); font-weight: 700; font-size: 13px;
+  }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  header .spacer { flex: 1; }
+  header button { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 8px; }
+
+  main { padding: 16px; max-width: 640px; margin: 0 auto; display: grid; gap: 12px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+  .card h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 10px; }
+  .sub { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .metric { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+  .metric .label { font-size: 12px; color: var(--muted); }
+  .metric .value { font-size: 19px; font-weight: 650; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .metric .change { font-size: 11px; margin-top: 2px; color: var(--muted); }
+  .metric .change.up { color: #16a34a; }
+  .metric .change.down { color: var(--danger); }
+
+  .alert {
+    border: 1px solid var(--danger); border-radius: 14px; padding: 12px 14px; font-size: 13px;
+    background: var(--surface);
+  }
+  .alert b { display: block; margin-bottom: 2px; }
+
+  .segments { display: flex; gap: 6px; background: var(--bg); padding: 4px; border-radius: 12px; }
+  .segments button {
+    flex: 1; border: 0; background: none; color: var(--muted);
+    padding: 9px 0; border-radius: 9px; font-size: 13px; font-weight: 500;
+  }
+  .segments button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+  canvas { width: 100%; height: 170px; display: block; margin-top: 10px; }
+
+  .analysis { display: grid; gap: 16px; }
+  .bar-row .top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+  .bar-row .track { height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+  .bar-row .fill { height: 100%; border-radius: 4px; background: var(--accent); }
+  .bar-row .share { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .limit { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .limit input {
+    width: 90px; padding: 9px 10px; font-size: 15px; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions button {
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    border-radius: 14px; padding: 14px 10px; font-size: 14px; font-weight: 500; min-height: 48px;
+  }
+  .actions button:active { background: var(--accent-soft); }
+  .actions button:disabled { opacity: .5; }
+  .status { margin-top: 10px; font-size: 13px; color: var(--muted); min-height: 18px; }
+
+  .rows { display: grid; gap: 2px; }
+  .row { display: flex; align-items: baseline; gap: 8px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .day { font-size: 12px; color: var(--muted); width: 44px; flex: none; }
+  .row .what { flex: 1; min-width: 0; }
+  .row .name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .cost { font-size: 14px; font-variant-numeric: tabular-nums; }
+  .row .cost.unpriced { font-size: 11px; color: var(--muted); }
+
+  .login { max-width: 380px; margin: 12vh auto 0; display: grid; gap: 12px; }
+  .login h2 { font-size: 22px; margin: 0 0 4px; }
+  .login p { margin: 0; color: var(--muted); font-size: 13px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+  input {
+    width: 100%; padding: 13px 14px; font-size: 16px; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .primary {
+    width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 600;
+    background: var(--accent); color: #fff; margin-top: 4px;
+  }
+  .error { color: var(--danger); font-size: 13px; min-height: 18px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header v-if="signedIn">
+    <div class="mark">用</div>
+    <h1>用量面板</h1>
+    <div class="spacer"></div>
+    <button @click="refresh">刷新</button>
+    <button @click="signOut">退出</button>
+  </header>
+
+  <main v-if="signedIn">
+    <div class="metrics">
+      <div class="metric">
+        <div class="label">今日花费</div>
+        <div class="value">¥{{ money(todayCny) }}</div>
+        <div class="change" :class="todayChangeClass">${{ money(todayCost) }} · {{ todayChangeText }}</div>
+      </div>
+      <div class="metric">
+        <div class="label">今日 tokens</div>
+        <div class="value">{{ compact(todayTokens) }}</div>
+        <div class="change" :class="tokenChangeClass">{{ tokenChangeText }}</div>
+      </div>
+      <div class="metric">
+        <div class="label">近 30 天</div>
+        <div class="value">¥{{ money(last30Cny) }}</div>
+        <div class="change">${{ money(last30) }}</div>
+      </div>
+    </div>
+
+    <div class="alert" v-if="isOverLimit">
+      <b>今日花费已超过提醒线</b>
+      今天已经用了 ¥{{ money(todayCny) }}，提醒线是 ¥{{ limitCny }}。
+    </div>
+
+    <section class="card">
+      <h2>每天的花费</h2>
+      <div class="segments">
+        <button v-for="n in [7, 30, 90]" :key="n" :class="{ on: days === n }" @click="setDays(n)">{{ n }} 天</button>
+      </div>
+      <canvas ref="chart"></canvas>
+      <div v-if="!inRange.length" class="empty">这段时间没有数据。</div>
+    </section>
+
+    <section class="card">
+      <h2>用量分析 <span class="sub">近 30 天 · 1 美元 ≈ ¥{{ rate.toFixed(2) }}</span></h2>
+      <div class="analysis">
+        <div>
+          <div class="top"><span class="sub">按客户端</span></div>
+          <div class="bars">
+            <div class="bar-row" v-for="row in byClient" :key="row.name">
+              <div class="top"><span>{{ row.name }}</span><span>¥{{ money(row.cny) }}</span></div>
+              <div class="track"><div class="fill" :style="{ width: (row.share * 100).toFixed(1) + '%' }"></div></div>
+              <div class="share">{{ (row.share * 100).toFixed(1) }}%</div>
+            </div>
+            <div v-if="!byClient.length" class="empty">还没有已计价的用量。</div>
+          </div>
+        </div>
+        <div>
+          <div class="top"><span class="sub">按 API 厂家</span></div>
+          <div class="bars">
+            <div class="bar-row" v-for="row in byProvider" :key="row.name">
+              <div class="top"><span>{{ row.name }}</span><span>¥{{ money(row.cny) }}</span></div>
+              <div class="track"><div class="fill" :style="{ width: (row.share * 100).toFixed(1) + '%' }"></div></div>
+              <div class="share">{{ (row.share * 100).toFixed(1) }}%</div>
+            </div>
+            <div v-if="!byProvider.length" class="empty">还没有已计价的用量。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>单日提醒</h2>
+      <div class="limit">
+        <span>今日超过</span>
+        <input type="number" inputmode="decimal" min="0" step="10" v-model.number="limitCny" />
+        <span>元时提醒</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>控制台</h2>
+      <div class="actions">
+        <button v-for="a in actions" :key="a.key" :disabled="busy" @click="send(a.key)">{{ a.label }}</button>
+      </div>
+      <div class="status">{{ status }}</div>
+    </section>
+
+    <section class="card">
+      <h2>明细</h2>
+      <div class="rows">
+        <div v-for="(r, i) in rows" :key="i" class="row">
+          <div class="day">{{ r.dayText }}</div>
+          <div class="what">
+            <div class="name">{{ r.model || '未知模型' }}</div>
+            <div class="meta">{{ r.source }} · {{ r.provider || '—' }}</div>
+          </div>
+          <div class="cost" :class="{ unpriced: !r.priced }">{{ r.priced ? '¥' + money(r.cny) : '未计价' }}</div>
+        </div>
+        <div v-if="!rows.length" class="empty">还没有数据：先让家里的 agent 跑一次。</div>
+      </div>
+    </section>
+  </main>
+
+  <main v-else>
+    <div class="login">
+      <h2>用量面板</h2>
+      <p>用 Supabase 里那个账号登录，密码只用来换一次令牌。</p>
+      <div>
+        <label for="email">邮箱</label>
+        <input id="email" v-model="email" type="email" inputmode="email" autocomplete="username" placeholder="you@example.com" />
+      </div>
+      <div>
+        <label for="password">密码</label>
+        <input id="password" v-model="password" type="password" autocomplete="current-password" />
+      </div>
+      <div class="error">{{ error }}</div>
+      <button class="primary" :disabled="busy" @click="signIn">{{ busy ? '登录中…' : '登录' }}</button>
+    </div>
+  </main>
+</div>
+
+<script src="vue.global.prod.js"></script>
+<script>
+const SUPABASE = 'https://jjxkggytywtttzckptfs.supabase.co';
+const KEY = 'sb_publishable_0bNIG826A1kt5CMU09Ying_sYDv4vZd';
+const { createApp } = Vue;
+
+createApp({
+  data() {
+    return {
+      email: localStorage.getItem('nc_email') || '',
+      password: '',
+      accessToken: null,
+      error: '',
+      signedIn: false,
+      busy: false,
+      days: 7,
+      rows: [],
+      status: '',
+      rate: 6.68,
+      limitCny: Number(localStorage.getItem('nc_limit') || 50),
+      byClient: [],
+      byProvider: [],
+      actions: [
+        { key: 'chatgpt', label: '打开 ChatGPT' },
+        { key: 'ccswitch', label: '打开 CC Switch' },
+        { key: 'nextcowork', label: '打开 NextCoWork' },
+        { key: 'opencode', label: '打开 OpenCode' }
+      ]
+    };
+  },
+
+  computed: {
+    todayCost() { return this.sum(this.since(0), this.since(0)); },
+    todayCny() { return this.todayCost * this.rate; },
+    last30Cny() { return this.last30 * this.rate; },
+    isOverLimit() { return this.limitCny > 0 && this.todayCny >= this.limitCny; },
+    todayTokens() { return this.tokens(this.since(0), this.since(0)); },
+    last30() { return this.sum(this.since(29), this.since(0)); },
+    yesterdayCost() { return this.sum(this.since(1), this.since(1)); },
+    yesterdayTokens() { return this.tokens(this.since(1), this.since(1)); },
+    inRange() {
+      const from = this.since(this.days - 1);
+      return this.rows.filter(r => r.day >= from);
+    },
+    todayChangeText() { return this.changeText(this.todayCost, this.yesterdayCost); },
+    todayChangeClass() { return this.changeClass(this.todayCost, this.yesterdayCost); },
+    tokenChangeText() { return this.changeText(this.todayTokens, this.yesterdayTokens); },
+    tokenChangeClass() { return this.changeClass(this.todayTokens, this.yesterdayTokens); }
+  },
+
+  watch: {
+    limitCny(value) { localStorage.setItem('nc_limit', String(value || 0)); }
+  },
+
+  mounted() {
+    window.addEventListener('resize', () => this.draw());
+    this.loadRate();
+    this.restore();
+  },
+
+  methods: {
+    dayString(offset) {
+      const d = new Date();
+      d.setDate(d.getDate() - offset);
+      return d.toISOString().slice(0, 10);
+    },
+    since(offset) { return this.dayString(offset); },
+    localDay(iso) {
+      const d = new Date(iso);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    },
+
+    sum(from, to) {
+      return this.rows
+        .filter(r => r.day >= from && r.day <= to)
+        .reduce((total, r) => total + (r.priced ? Number(r.cost_usd) : 0), 0);
+    },
+    tokens(from, to) {
+      return this.rows
+        .filter(r => r.day >= from && r.day <= to)
+        .reduce((total, r) => total + Number(r.input_tokens) + Number(r.output_tokens), 0);
+    },
+    money(v) { return Number(v || 0).toFixed(2); },
+    compact(v) {
+      if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+      if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+      return String(Math.round(v));
+    },
+    changeText(now, before) {
+      if (!before) return '较昨日 —';
+      const pct = Math.round((now / before - 1) * 100);
+      return `较昨日 ${pct >= 0 ? '+' : ''}${pct}%`;
+    },
+    changeClass(now, before) {
+      if (!before) return '';
+      return now >= before ? 'up' : 'down';
+    },
+
+    async auth(grant, body) {
+      const response = await fetch(`${SUPABASE}/auth/v1/token?grant_type=${grant}`, {
+        method: 'POST',
+        headers: { apikey: KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error_description || data.msg || data.message || '登录失败');
+      return data;
+    },
+
+    async restore() {
+      const token = localStorage.getItem('nc_refresh');
+      if (!token) return;
+      try {
+        const data = await this.auth('refresh_token', { refresh_token: token });
+        this.applySession(data);
+        await this.load();
+      } catch {
+        localStorage.removeItem('nc_refresh');
+      }
+    },
+
+    async signIn() {
+      this.busy = true;
+      this.error = '';
+      try {
+        const data = await this.auth('password', { email: this.email.trim(), password: this.password });
+        this.password = '';
+        localStorage.setItem('nc_email', this.email.trim());
+        this.applySession(data);
+        await this.load();
+      } catch (exception) {
+        this.error = exception.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    applySession(data) {
+      this.accessToken = data.access_token;
+      localStorage.setItem('nc_refresh', data.refresh_token);
+      this.signedIn = true;
+    },
+
+    signOut() {
+      localStorage.removeItem('nc_refresh');
+      this.accessToken = null;
+      this.signedIn = false;
+      this.rows = [];
+    },
+
+    headers() {
+      return { apikey: KEY, Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' };
+    },
+
+    async load() {
+      this.status = '正在同步…';
+      try {
+        const from = this.dayString(180);
+        const url = `${SUPABASE}/rest/v1/usage_daily?select=day,source,provider,model,input_tokens,output_tokens,cost_usd,priced&day=gte.${from}&order=day.desc&limit=600`;
+        const response = await fetch(url, { headers: this.headers() });
+        if (!response.ok) throw new Error(`读取失败 (${response.status})`);
+        const data = await response.json();
+        this.rows = data.map(r => ({
+          ...r,
+          day: this.localDay(r.day),
+          dayText: this.localDay(r.day).slice(5),
+          priced: r.priced !== false,
+          cny: (Number(r.cost_usd) || 0) * this.rate
+        }));
+        this.buildBreakdowns();
+        this.status = '';
+        this.$nextTick(() => this.draw());
+      } catch (exception) {
+        this.status = exception.message;
+      }
+    },
+
+    refresh() { this.load(); },
+    setDays(n) { this.days = n; this.$nextTick(() => this.draw()); },
+
+    async loadRate() {
+      try {
+        const cached = JSON.parse(localStorage.getItem('nc_rate') || 'null');
+        if (cached && Date.now() - cached.at < 12 * 3600 * 1000) {
+          this.rate = cached.rate;
+          this.reprice();
+          return;
+        }
+        const data = await (await fetch('https://open.er-api.com/v6/latest/USD')).json();
+        const rate = data && data.rates && data.rates.CNY;
+        if (rate > 0) {
+          this.rate = rate;
+          localStorage.setItem('nc_rate', JSON.stringify({ rate, at: Date.now() }));
+          this.reprice();
+        }
+      } catch {
+        // Offline: the fallback rate stays, the dollars are still exact.
+      }
+    },
+
+    reprice() {
+      this.rows.forEach(r => { r.cny = (Number(r.cost_usd) || 0) * this.rate; });
+      this.buildBreakdowns();
+    },
+
+    buildBreakdowns() {
+      const from = this.since(29);
+      const rows = this.rows.filter(r => r.day >= from && r.priced);
+      const group = keyOf => {
+        const totals = new Map();
+        rows.forEach(r => {
+          const key = keyOf(r) || '未知';
+          totals.set(key, (totals.get(key) || 0) + Number(r.cost_usd));
+        });
+        const whole = [...totals.values()].reduce((a, b) => a + b, 0) || 1;
+        return [...totals.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([name, usd]) => ({ name, usd, cny: usd * this.rate, share: usd / whole }));
+      };
+      this.byClient = group(r => r.source);
+      this.byProvider = group(r => r.provider);
+    },
+
+    draw() {
+      const canvas = this.$refs.chart;
+      if (!canvas) return;
+      const ratio = window.devicePixelRatio || 1;
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const days = [];
+      for (let i = this.days - 1; i >= 0; i--) days.push(this.dayString(i));
+      const values = days.map(day =>
+        this.rows.filter(r => r.day === day).reduce((t, r) => t + (r.priced ? Number(r.cost_usd) : 0), 0));
+
+      const style = getComputedStyle(document.body);
+      const accent = style.getPropertyValue('--accent').trim() || '#4f7cff';
+      const line = style.getPropertyValue('--line').trim() || '#e5e7eb';
+      const muted = style.getPropertyValue('--muted').trim() || '#6b7280';
+      const max = Math.max(0.01, ...values);
+      const pad = 26;
+      const x = i => pad + (i * (width - pad * 2)) / Math.max(1, days.length - 1);
+      const y = v => height - 22 - (v / max) * (height - 44);
+
+      ctx.strokeStyle = line;
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 2; i++) {
+        const gy = 10 + (i * (height - 40)) / 2;
+        ctx.beginPath();
+        ctx.moveTo(pad, gy);
+        ctx.lineTo(width - pad, gy);
+        ctx.stroke();
+      }
+
+      if (values.some(v => v > 0)) {
+        const gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, accent + '55');
+        gradient.addColorStop(1, accent + '00');
+        ctx.beginPath();
+        ctx.moveTo(x(0), y(values[0]));
+        values.forEach((v, i) => ctx.lineTo(x(i), y(v)));
+        ctx.lineTo(x(values.length - 1), height - 22);
+        ctx.lineTo(x(0), height - 22);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        ctx.beginPath();
+        values.forEach((v, i) => (i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v))));
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        ctx.fillStyle = accent;
+        const last = values.length - 1;
+        ctx.beginPath();
+        ctx.arc(x(last), y(values[last]), 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = muted;
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(days[0].slice(5), pad, height - 6);
+      ctx.textAlign = 'right';
+      ctx.fillText('$' + max.toFixed(2), width - pad, 12);
+    },
+
+    userId() {
+      try {
+        const part = this.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(atob(part.padEnd(part.length + (4 - part.length % 4) % 4, '='))).sub;
+      } catch {
+        return null;
+      }
+    },
+
+    async send(action) {
+      if (this.busy) return;
+      this.busy = true;
+      this.status = `正在让电脑执行「${action}」…`;
+      try {
+        const owner = this.userId();
+        const devices = await (await fetch(`${SUPABASE}/rest/v1/devices?select=id&order=last_seen.desc&limit=1`, { headers: this.headers() })).json();
+        if (!devices.length) throw new Error('还没有设备上报：先让家里的 agent 跑一次。');
+
+        const created = await (await fetch(`${SUPABASE}/rest/v1/commands`, {
+          method: 'POST',
+          headers: { ...this.headers(), Prefer: 'return=representation' },
+          body: JSON.stringify({ owner, device_id: devices[0].id, action, payload: {} })
+        })).json();
+
+        const id = created[0].id;
+        for (let i = 0; i < 15; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const check = await (await fetch(`${SUPABASE}/rest/v1/commands?id=eq.${id}&select=status,result`, { headers: this.headers() })).json();
+          const row = check[0];
+          if (row && (row.status === 'done' || row.status === 'failed')) {
+            this.status = row.status === 'done' ? (row.result || '完成') : '失败：' + (row.result || '未知原因');
+            return;
+          }
+        }
+        this.status = '命令已发送，但 agent 没回应（它在线吗？）';
+      } catch (exception) {
+        this.status = exception.message;
+      } finally {
+        this.busy = false;
+      }
+    }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
