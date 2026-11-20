@@ -100,6 +100,7 @@
   pre.result { margin: 10px 0 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; font-size: 13px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
 
   .chat { display: grid; gap: 10px; }
+  .picker { display: grid; gap: 2px; margin-bottom: 12px; }
   .msg { max-width: 88%; padding: 10px 12px; border-radius: 14px; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
   .msg.user { justify-self: end; background: var(--accent); color: #fff; }
   .msg.assistant { justify-self: start; background: var(--bg); border: 1px solid var(--line); }
@@ -230,6 +231,19 @@
 
     <section v-show="tab === 'chat'" class="card">
       <h2>对话 <span class="sub">经服务端转发，key 不会到手机</span></h2>
+      <div class="picker">
+        <label for="chatRoute">供应商</label>
+        <select id="chatRoute" v-model="chatRoute" @change="loadCatalog()">
+          <option v-for="r in routes" :key="r.name" :value="r.name">{{ r.label }}</option>
+          <option v-if="!routes.length" value="">（还没配 CHAT_ROUTES）</option>
+        </select>
+        <label for="chatModel">模型 <span class="sub" v-if="models.length">共 {{ models.length }} 个</span></label>
+        <select v-if="models.length" id="chatModel" v-model="chatModel">
+          <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
+        </select>
+        <input v-else id="chatModel" v-model="chatModel" placeholder="这个供应商没回列表，手填模型名" />
+        <div class="status">{{ catalogStatus }}</div>
+      </div>
       <div class="chat">
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">{{ m.content || '…' }}</div>
         <div v-if="!messages.length" class="empty">还没有消息。问一句试试。</div>
@@ -299,6 +313,11 @@ createApp({
       chatInput: '',
       chatStatus: '',
       chatBusy: false,
+      routes: [],
+      models: [],
+      chatRoute: localStorage.getItem('nc_route') || '',
+      chatModel: localStorage.getItem('nc_model') || '',
+      catalogStatus: '',
       actions: [
         { key: 'chatgpt', label: '打开 ChatGPT' },
         { key: 'ccswitch', label: '打开 CC Switch' },
@@ -326,7 +345,9 @@ createApp({
 
   watch: {
     limitCny(value) { localStorage.setItem('nc_limit', String(value || 0)); },
-    taskCwd(value) { localStorage.setItem('nc_cwd', value); }
+    taskCwd(value) { localStorage.setItem('nc_cwd', value); },
+    chatRoute(value) { localStorage.setItem('nc_route', value || ''); },
+    chatModel(value) { localStorage.setItem('nc_model', value || ''); }
   },
 
   mounted() {
@@ -339,6 +360,7 @@ createApp({
     switchTab(name) {
       this.tab = name;
       if (name === 'usage') { this.$nextTick(() => this.draw()); }
+      if (name === 'chat') { this.loadCatalog(); }
     },
 
     dayString(offset) { const d = new Date(); d.setDate(d.getDate() - offset); return d.toISOString().slice(0, 10); },
@@ -556,9 +578,35 @@ createApp({
       finally { this.taskBusy = false; }
     },
 
+    // The provider decides which models exist: ask the function, not a hard-coded list.
+    async loadCatalog() {
+      if (!this.accessToken) return;
+      this.catalogStatus = '正在读模型列表…';
+      try {
+        const query = this.chatRoute ? `?route=${encodeURIComponent(this.chatRoute)}` : '';
+        const response = await fetch(`${SUPABASE}/functions/v1/chat${query}`, { headers: this.headers() });
+        if (!response.ok) {
+          const detail = await response.text();
+          this.catalogStatus = response.status === 404
+            ? 'chat 函数还没部署（Supabase → Edge Functions）'
+            : `读不到模型列表（${response.status}）：${detail.slice(0, 120)}`;
+          return;
+        }
+        const data = await response.json();
+        this.routes = data.routes || [];
+        if (data.route) this.chatRoute = data.route;
+        this.models = data.models || [];
+        if (this.models.length && !this.models.includes(this.chatModel)) this.chatModel = this.models[0];
+        this.catalogStatus = this.models.length ? '' : '这个供应商没回模型列表，直接手填模型名。';
+      } catch {
+        this.catalogStatus = '连不上 chat 函数（大概还没部署）';
+      }
+    },
+
     async sendChat() {
       const text = this.chatInput.trim();
       if (!text || this.chatBusy) return;
+      if (!this.chatModel) { this.chatStatus = '先选个模型'; return; }
       this.chatInput = '';
       this.chatStatus = '';
       this.messages.push({ role: 'user', content: text });
@@ -570,7 +618,8 @@ createApp({
           method: 'POST',
           headers: this.headers(),
           body: JSON.stringify({
-            model: localStorage.getItem('nc_model') || 'deepseek-v4.1-flash',
+            route: this.chatRoute || undefined,
+            model: this.chatModel,
             messages: this.messages.filter(m => m.content).map(m => ({ role: m.role, content: m.content }))
           })
         });
