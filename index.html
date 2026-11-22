@@ -123,9 +123,10 @@
 <div id="app">
   <header v-if="signedIn">
     <div class="mark">用</div>
-    <h1>{{ tab === 'chat' ? '对话' : tab === 'task' ? '任务' : '用量面板' }}</h1>
+    <h1>{{ tab === 'chat' ? '对话' : tab === 'task' ? '任务' : tab === 'settings' ? '设置' : '用量面板' }}</h1>
     <div class="spacer"></div>
     <button @click="refreshAll">刷新</button>
+    <button @click="switchTab('settings')">设置</button>
     <button @click="signOut">退出</button>
   </header>
 
@@ -258,12 +259,67 @@
         <div class="status">{{ chatStatus }}</div>
       </div>
     </section>
+
+    <section v-show="tab === 'settings'">
+      <section v-if="isAdmin" class="card">
+        <h2>管理员 · 邀请码</h2>
+        <p class="sub">邀请码一次性使用，默认 30 天过期。</p>
+        <button class="primary" :disabled="settingsBusy" @click="generateInvite">{{ settingsBusy ? '处理中…' : '生成邀请码' }}</button>
+        <pre v-if="inviteResult" class="result">邀请码（仅显示这一次）：
+{{ inviteResult.code }}
+
+有效期至：{{ inviteResult.expires_at }}</pre>
+      </section>
+
+      <section class="card">
+        <h2>个人资料</h2>
+        <label for="displayName">显示名称</label>
+        <input id="displayName" v-model="displayName" maxlength="80" placeholder="例如：家里用户" />
+        <button class="primary" :disabled="settingsBusy" @click="saveProfile">保存资料</button>
+        <div class="status">{{ settingsStatus }}</div>
+      </section>
+      <section class="card" style="margin-top:12px">
+        <h2>我的设备</h2>
+        <label for="newDeviceName">绑定新设备</label>
+        <input id="newDeviceName" v-model="newDeviceName" maxlength="120" placeholder="例如：家里的 Windows 电脑" />
+        <button class="primary" :disabled="settingsBusy" @click="bindDevice">{{ settingsBusy ? '处理中…' : '绑定并签发令牌' }}</button>
+        <div class="sub">将设备 ID 填入 UsageAgent 的 DeviceId，将令牌填入 DeviceToken。令牌只在签发时显示一次；遗失后可重新签发。</div>
+        <div class="rows">
+          <div v-for="device in devices" :key="device.id" class="row">
+            <div class="what">
+              <div class="name">{{ device.name || '未命名设备' }}</div>
+              <div class="meta">{{ device.id }} · {{ device.revoked_at ? '已吊销' : (device.last_seen || '未上报') }}</div>
+            </div>
+            <div class="actions" style="display:flex;gap:6px">
+              <button :disabled="settingsBusy" @click="issueToken(device)">{{ device.revoked_at ? '恢复并重新签发' : '重新签发' }}</button>
+              <button :disabled="settingsBusy || !!device.revoked_at" @click="revokeDevice(device)">吊销</button>
+            </div>
+          </div>
+          <div v-if="!devices.length" class="empty">还没有设备。</div>
+        </div>
+        <pre v-if="issuedDevice" class="result">DeviceId：
+{{ issuedDevice.device_id }}
+
+DeviceToken（只显示这一次）：
+{{ issuedDevice.device_token }}</pre>
+      </section>
+    </section>
   </main>
 
   <main v-else>
     <div class="login">
       <h2>用量面板</h2>
-      <p>用 Supabase 里那个账号登录，密码只用来换一次令牌。</p>
+      <p>{{ authMode === 'signup' ? '使用一次性邀请码注册。' : '用账号登录，密码只用来换一次令牌。' }}</p>
+      <div class="segments">
+        <button :class="{ on: authMode === 'signin' }" @click="authMode = 'signin'">登录</button>
+        <button :class="{ on: authMode === 'signup' }" @click="authMode = 'signup'">注册</button>
+      </div>
+      <div v-if="authMode === 'signup'">
+        <label for="inviteCode">邀请码</label>
+        <input id="inviteCode" v-model="inviteCode" autocomplete="off" placeholder="输入一次性邀请码" />
+        <label for="displayNameSignup">显示名称</label>
+        <input id="displayNameSignup" v-model="displayName" maxlength="80" placeholder="例如：家里用户" />
+      </div>
       <div>
         <label for="email">邮箱</label>
         <input id="email" v-model="email" type="email" inputmode="email" autocomplete="username" placeholder="you@example.com" />
@@ -273,7 +329,7 @@
         <input id="password" v-model="password" type="password" autocomplete="current-password" />
       </div>
       <div class="error">{{ error }}</div>
-      <button class="primary" :disabled="busy" @click="signIn">{{ busy ? '登录中…' : '登录' }}</button>
+      <button class="primary" :disabled="busy" @click="submitAuth">{{ busy ? '处理中…' : (authMode === 'signup' ? '注册并登录' : '登录') }}</button>
     </div>
   </main>
 
@@ -281,6 +337,7 @@
     <button :class="{ on: tab === 'usage' }" @click="switchTab('usage')">用量</button>
     <button :class="{ on: tab === 'task' }" @click="switchTab('task')">任务</button>
     <button :class="{ on: tab === 'chat' }" @click="switchTab('chat')">对话</button>
+    <button :class="{ on: tab === 'settings' }" @click="switchTab('settings')">设置</button>
   </nav>
 </div>
 
@@ -295,7 +352,11 @@ createApp({
     return {
       email: localStorage.getItem('nc_email') || '',
       password: '',
+      authMode: 'signin',
+      inviteCode: '',
+      displayName: localStorage.getItem('nc_display_name') || '',
       accessToken: null,
+      sessionEpoch: 0,
       error: '',
       signedIn: false,
       busy: false,
@@ -322,6 +383,13 @@ createApp({
       chatRoute: localStorage.getItem('nc_route') || '',
       chatModel: localStorage.getItem('nc_model') || '',
       catalogStatus: '',
+      settingsBusy: false,
+      settingsStatus: '',
+      devices: [],
+      isAdmin: false,
+      inviteResult: null,
+      newDeviceName: '',
+      issuedDevice: null,
       actions: [
         { key: 'chatgpt', label: '打开 ChatGPT' },
         { key: 'ccswitch', label: '打开 CC Switch' },
@@ -365,6 +433,7 @@ createApp({
       this.tab = name;
       if (name === 'usage') { this.$nextTick(() => this.draw()); }
       if (name === 'chat') { this.loadCatalog(); }
+      if (name === 'settings') { this.loadSettings(); }
     },
 
     dayString(offset) { const d = new Date(); d.setDate(d.getDate() - offset); return d.toISOString().slice(0, 10); },
@@ -409,32 +478,117 @@ createApp({
       finally { this.busy = false; }
     },
 
+    async submitAuth() {
+      if (this.authMode === 'signup') {
+        this.busy = true; this.error = '';
+        try {
+          await fetch(`${SUPABASE}/functions/v1/account`, {
+            method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operation: 'signup', invite_code: this.inviteCode.trim(), email: this.email.trim(), password: this.password, display_name: this.displayName.trim() })
+          }).then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || '注册失败'); });
+          this.authMode = 'signin';
+          const data = await this.auth('password', { email: this.email.trim(), password: this.password });
+          this.password = ''; this.inviteCode = ''; this.applySession(data); await this.load();
+        } catch (exception) { this.error = exception.message; }
+        finally { this.busy = false; }
+        return;
+      }
+      await this.signIn();
+    },
+
     applySession(data) {
+      this.sessionEpoch += 1;
       this.accessToken = data.access_token;
       localStorage.setItem('nc_refresh', data.refresh_token);
       this.signedIn = true;
     },
 
     signOut() {
-      localStorage.removeItem('nc_refresh');
-      this.accessToken = null; this.signedIn = false; this.rows = [];
+      this.sessionEpoch += 1;
+      ['nc_refresh', 'nc_email', 'nc_display_name', 'nc_route', 'nc_model', 'nc_cwd', 'nc_limit'].forEach(key => localStorage.removeItem(key));
+      this.accessToken = null; this.signedIn = false;
+      window.location.reload();
     },
 
     headers() { return { apikey: KEY, Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' }; },
 
+    async accountRequest(body, method = 'POST') {
+      const response = await fetch(`${SUPABASE}/functions/v1/account`, { method, headers: this.headers(), body: method === 'GET' ? undefined : JSON.stringify(body) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `设置请求失败 (${response.status})`);
+      return data;
+    },
+
+    async loadSettings() {
+      if (!this.accessToken) return;
+      const epoch = this.sessionEpoch;
+      try {
+        const profile = await this.accountRequest({ operation: 'profile', read: true });
+        if (epoch !== this.sessionEpoch) return;
+        if (profile && profile.display_name !== undefined) { this.displayName = profile.display_name || ''; localStorage.setItem('nc_display_name', this.displayName); }
+        this.isAdmin = profile?.is_admin === true;
+        const devices = await this.accountRequest({ operation: 'devices' }, 'POST');
+        if (epoch !== this.sessionEpoch) return;
+        this.devices = devices;
+      } catch (exception) { if (epoch === this.sessionEpoch) this.settingsStatus = exception.message; }
+    },
+
+    async saveProfile() {
+      this.settingsBusy = true; this.settingsStatus = '';
+      try { await this.accountRequest({ operation: 'profile', display_name: this.displayName }); localStorage.setItem('nc_display_name', this.displayName); this.settingsStatus = '已保存'; }
+      catch (exception) { this.settingsStatus = exception.message; }
+      finally { this.settingsBusy = false; }
+    },
+
+    async generateInvite() {
+      this.settingsBusy = true; this.inviteResult = null; this.settingsStatus = '';
+      try { this.inviteResult = await this.accountRequest({ operation: 'create_invite', days: 30, label: '' }); this.settingsStatus = '邀请码已生成；请安全转交给注册用户。'; }
+      catch (exception) { this.settingsStatus = exception.message; }
+      finally { this.settingsBusy = false; }
+    },
+
+    async bindDevice() {
+      const name = this.newDeviceName.trim();
+      if (!name) { this.settingsStatus = '请先填写设备名称。'; return; }
+      this.settingsBusy = true; this.issuedDevice = null; this.settingsStatus = '';
+      try { this.issuedDevice = await this.accountRequest({ operation: 'bind_device', name }); this.newDeviceName = ''; this.settingsStatus = '设备已绑定；请立即保存令牌并配置 UsageAgent。'; await this.loadSettings(); }
+      catch (exception) { this.settingsStatus = exception.message; }
+      finally { this.settingsBusy = false; }
+    },
+
+    async issueToken(device) {
+      this.settingsBusy = true; this.issuedDevice = null; this.settingsStatus = '';
+      try { const data = await this.accountRequest({ operation: 'issue_device_token', device_id: device.id }); this.issuedDevice = data; this.settingsStatus = '新令牌只显示这一次，请立即更新 UsageAgent 配置。'; await this.loadSettings(); }
+      catch (exception) { this.settingsStatus = exception.message; }
+      finally { this.settingsBusy = false; }
+    },
+
+    async revokeDevice(device) {
+      if (!confirm(`确定吊销设备 ${device.name || device.id}？`)) return;
+      this.settingsBusy = true; this.settingsStatus = '';
+      if (this.issuedDevice?.device_id === device.id) this.issuedDevice = null;
+      try { await this.accountRequest({ operation: 'revoke_device', device_id: device.id }); this.settingsStatus = '设备已吊销'; await this.loadSettings(); }
+      catch (exception) { this.settingsStatus = exception.message; }
+      finally { this.settingsBusy = false; }
+    },
+
     async load() {
+      if (!this.accessToken) return;
+      const epoch = this.sessionEpoch;
       this.status = '正在同步…';
       try {
         const from = this.dayString(180);
         const url = `${SUPABASE}/rest/v1/usage_daily?select=day,source,provider,model,input_tokens,output_tokens,cost_usd,priced&day=gte.${from}&order=day.desc&limit=600`;
         const response = await fetch(url, { headers: this.headers() });
+        if (epoch !== this.sessionEpoch) return;
         if (!response.ok) throw new Error(`读取失败 (${response.status})`);
         const data = await response.json();
+        if (epoch !== this.sessionEpoch) return;
         this.rows = data.map(r => ({ ...r, day: this.localDay(r.day), dayText: this.localDay(r.day).slice(5), priced: r.priced !== false, cny: (Number(r.cost_usd) || 0) * this.rate }));
         this.buildBreakdowns();
         this.status = '';
         this.$nextTick(() => this.draw());
-      } catch (exception) { this.status = exception.message; }
+      } catch (exception) { if (epoch === this.sessionEpoch) this.status = exception.message; }
     },
 
     refreshAll() { this.load(); },
@@ -519,20 +673,23 @@ createApp({
     },
 
     async deviceId() {
-      const devices = await (await fetch(`${SUPABASE}/rest/v1/devices?select=id&order=last_seen.desc&limit=1`, { headers: this.headers() })).json();
+      const devices = await (await fetch(`${SUPABASE}/rest/v1/devices?select=id&revoked_at=is.null&order=last_seen.desc&limit=1`, { headers: this.headers() })).json();
       if (!devices.length) throw new Error('还没有设备上报：先让家里的 agent 跑一次。');
       return devices[0].id;
     },
 
     async send(action) {
       if (this.busy) return;
+      const epoch = this.sessionEpoch;
       this.busy = true; this.status = `正在让电脑执行「${action}」…`;
       try {
         const id = await this.sendCommand(action, {});
+        if (epoch !== this.sessionEpoch) return;
         const row = await this.waitFor(id, 15);
+        if (epoch !== this.sessionEpoch) return;
         this.status = row.result || (row.status === 'done' ? '完成' : '失败');
-      } catch (exception) { this.status = exception.message; }
-      finally { this.busy = false; }
+      } catch (exception) { if (epoch === this.sessionEpoch) this.status = exception.message; }
+      finally { if (epoch === this.sessionEpoch) this.busy = false; }
     },
 
     async sendCommand(action, payload) {
@@ -560,13 +717,16 @@ createApp({
     },
 
     async sendTask() {
+      const epoch = this.sessionEpoch;
       const prompt = this.taskPrompt.trim();
       if (!prompt) { this.taskStatus = '先写任务内容'; return; }
       this.taskBusy = true; this.taskResult = ''; this.taskStatus = '已发送，等待电脑执行…';
       try {
         const id = await this.sendCommand('codex_task', { prompt, cwd: this.taskCwd });
+        if (epoch !== this.sessionEpoch) return;
         for (let i = 0; i < 300; i++) {
           await new Promise(r => setTimeout(r, 2000));
+          if (epoch !== this.sessionEpoch) return;
           const rows = await (await fetch(`${SUPABASE}/rest/v1/commands?id=eq.${id}&select=status,result`, { headers: this.headers() })).json();
           const row = rows && rows[0];
           if (!row) continue;
@@ -578,17 +738,19 @@ createApp({
           this.taskStatus = `运行中… 已等 ${(i + 1) * 2} 秒`;
         }
         this.taskStatus = '等太久了（10 分钟），先看看电脑那边';
-      } catch (exception) { this.taskStatus = exception.message; }
-      finally { this.taskBusy = false; }
+      } catch (exception) { if (epoch === this.sessionEpoch) this.taskStatus = exception.message; }
+      finally { if (epoch === this.sessionEpoch) this.taskBusy = false; }
     },
 
     // The provider decides which models exist: ask the function, not a hard-coded list.
     async loadCatalog() {
       if (!this.accessToken) return;
+      const epoch = this.sessionEpoch;
       this.catalogStatus = '正在读模型列表…';
       try {
         const query = this.chatRoute ? `?route=${encodeURIComponent(this.chatRoute)}` : '';
         const response = await fetch(`${SUPABASE}/functions/v1/chat${query}`, { headers: this.headers() });
+        if (epoch !== this.sessionEpoch) return;
         if (!response.ok) {
           const detail = await response.text();
           this.catalogStatus = response.status === 404
@@ -597,13 +759,14 @@ createApp({
           return;
         }
         const data = await response.json();
+        if (epoch !== this.sessionEpoch) return;
         this.routes = data.routes || [];
         if (data.route) this.chatRoute = data.route;
         this.models = data.models || [];
         if (this.models.length && !this.models.includes(this.chatModel)) this.chatModel = this.models[0];
         this.catalogStatus = this.models.length ? '' : '这个供应商没回模型列表，直接手填模型名。';
       } catch {
-        this.catalogStatus = '连不上 chat 函数（大概还没部署）';
+        if (epoch === this.sessionEpoch) this.catalogStatus = '连不上 chat 函数（大概还没部署）';
       }
     },
 
