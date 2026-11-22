@@ -833,6 +833,72 @@ createApp({
 }).mount('#app');
 </script>
 <script>
+// Reset only a viewport scale jump that happens after a form control receives focus.
+(() => {
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (!viewport) return;
+  const preferredViewport = viewport.content;
+  const visualViewport = window.visualViewport;
+  let pointerScale = 1;
+  let pointerAt = 0;
+  let focusScale = 1;
+  let focusAt = 0;
+  let recovering = false;
+  let adjustedForFocus = false;
+  const editableSelector = 'input, textarea, select';
+
+  function standaloneMode() {
+    return navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  }
+
+  function isEditable(element) {
+    return element instanceof HTMLElement && element.matches(editableSelector);
+  }
+
+  function resetUnexpectedFocusZoom() {
+    if (!standaloneMode() || recovering || adjustedForFocus || !isEditable(document.activeElement)) return;
+    if (Date.now() - focusAt > 1500) return;
+    const scale = visualViewport?.scale ?? 1;
+    if (scale <= focusScale * 1.08) return;
+
+    recovering = true;
+    const stableScale = Math.min(Math.max(focusScale, 0.5), 5);
+    viewport.content = `width=device-width, initial-scale=${stableScale}, viewport-fit=cover`;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      adjustedForFocus = true;
+      recovering = false;
+    }));
+  }
+
+  function releaseFocusZoomLimit() {
+    window.setTimeout(() => {
+      if (isEditable(document.activeElement) || !adjustedForFocus) return;
+      viewport.content = `width=device-width, initial-scale=${focusScale}, viewport-fit=cover`;
+      requestAnimationFrame(() => {
+        viewport.content = preferredViewport;
+        adjustedForFocus = false;
+        focusAt = 0;
+        pointerAt = 0;
+      });
+    }, 80);
+  }
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!isEditable(event.target)) return;
+    pointerScale = visualViewport?.scale ?? 1;
+    pointerAt = Date.now();
+  }, true);
+  document.addEventListener('focusin', (event) => {
+    if (!isEditable(event.target)) return;
+    focusScale = Date.now() - pointerAt < 1500 ? pointerScale : (visualViewport?.scale ?? 1);
+    focusAt = Date.now();
+    window.setTimeout(resetUnexpectedFocusZoom, 80);
+  });
+  document.addEventListener('focusout', releaseFocusZoomLimit);
+  visualViewport?.addEventListener('resize', resetUnexpectedFocusZoom, { passive: true });
+})();
+</script>
+<script>
 // The shell only: offline the page still opens, the numbers themselves need the network.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
