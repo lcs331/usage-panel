@@ -38,7 +38,7 @@ globalThis.PhoneSessions = {
       this.sessionLastRequest = saved?.requestId || ''; this.sessionLastOperation = saved?.operation || '';
       this.sessionResultRequest = this.phoneRecord('nc_session_result')?.requestId || '';
       this.sessionCanRecover = !!saved;
-      this.sessionStatus = '选择电脑，再明确读取会话列表。';
+      this.sessionStatus = this.sessionDevice ? '已选择电脑；下一步读取会话列表。' : '选择电脑，再明确读取会话列表。';
     },
     async loadSessionDevices() {
       if (this.sessionBusy) return;
@@ -54,7 +54,7 @@ globalThis.PhoneSessions = {
         if (!rows.some(d => d.id === this.sessionDevice)) this.sessionDevice = '';
         this.sessionCanRecover = !!this.recoverablePhoneReceipt();
         this.sessionResultRequest = this.phoneRecord('nc_session_result')?.requestId || '';
-        this.sessionStatus = rows.length ? '请选择电脑；不会自动读取会话或正文。' : '没有可用设备，请先绑定并启动测试 UsageAgent。';
+        this.sessionStatus = rows.length ? (this.sessionDevice ? '已选择电脑；不会自动读取会话或正文。' : '请选择电脑；不会自动读取会话或正文。') : '还没有可用的电脑。先在设置里添加一台电脑，再启动后台程序。';
       } catch { if (epoch === this.sessionEpoch) this.sessionStatus = '设备列表未读取，请检查连接。'; }
       finally { if (epoch === this.sessionEpoch) this.sessionBusy = false; }
     },
@@ -233,7 +233,7 @@ globalThis.PhoneSessions = {
                 this.sessionFinalReply = ''; this.sessionStatus = '结果已过期，正文已从页面清除。';
               }
             }, remaining);
-            this.sessionStatus = this.sessionResultTruncated ? '任务完成；回复超过 16 KiB，仅展示前缀。' : '任务完成，以下为该次最终助手回复。';
+            this.sessionStatus = this.sessionResultTruncated ? '任务完成；回复超过 1.6 万字符，仅展示前缀。' : '任务完成，以下为该次最终助手回复。';
           } else {
             const labels = { pending: '尚无最终回复；可稍后查询，不会再次派单。', failed: '任务失败，没有可展示的最终回复。',
               interrupted: '任务已中断，没有最终回复。', unknown: '执行结果未知，不能重复派单。',

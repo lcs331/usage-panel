@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#101728" />
+<meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -13,206 +14,233 @@
 <title>用量面板</title>
 <style>
   :root {
-    --bg: #f6f7fb; --surface: #fff; --text: #111827; --muted: #6b7280;
-    --line: #e5e7eb; --accent: #4f7cff; --accent-soft: rgba(79,124,255,.12); --danger: #dc2626;
+    --bg:#fafafa; --surface:#fff; --text:#09090b; --muted:#71717a;
+    --line:#e4e4e7; --line-strong:#d4d4d8;
+    --primary:#18181b; --primary-text:#fafafa;
+    --ok:#15803d; --ok-soft:#f0fdf4;
+    --warn:#b45309; --warn-soft:#fffbeb;
+    --danger:#b91c1c; --danger-soft:#fef2f2;
+    --r-card:12px; --r-control:8px; --r-pill:999px;
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s6:24px; --s8:32px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0b1220; --surface: #131c2e; --text: #e8ecf5; --muted: #8b97ad;
-      --line: #223049; --accent: #6f96ff; --accent-soft: rgba(111,150,255,.16);
+      --bg:#09090b; --surface:#18181b; --text:#fafafa; --muted:#a1a1aa;
+      --line:#27272a; --line-strong:#3f3f46;
+      --primary:#fafafa; --primary-text:#18181b;
+      --ok:#4ade80; --ok-soft:#0f1f14;
+      --warn:#fbbf24; --warn-soft:#1f1a0b;
+      --danger:#f87171; --danger-soft:#201010;
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; }
+  html, body { margin: 0; min-height: 100%; }
   body {
     background: var(--bg); color: var(--text);
-    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    font-variant-numeric: tabular-nums;
     padding: env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 64px);
   }
   header {
-    position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px;
-    padding: calc(14px + env(safe-area-inset-top)) 16px 14px 16px;
+    position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: var(--s2);
+    padding: calc(var(--s2) + env(safe-area-inset-top)) var(--s4) var(--s2);
     margin-top: calc(-1 * env(safe-area-inset-top));
     background: var(--bg); border-bottom: 1px solid var(--line);
   }
-  header .mark { width: 28px; height: 28px; border-radius: 8px; background: var(--text); display: grid; place-items: center; color: var(--bg); font-weight: 700; font-size: 13px; }
-  header h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
   header .spacer { flex: 1; }
-  header button { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 8px; }
 
-  main { padding: 16px; max-width: 640px; margin: 0 auto; display: grid; gap: 12px; }
+  main { padding: var(--s4); max-width: 640px; margin: 0 auto; }
+  section.page { display: grid; gap: var(--s6); }
+  .lede { margin: 0; font-size: 14px; color: var(--muted); }
 
-  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
-  .card h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 10px; }
-  .sub { font-size: 11px; color: var(--muted); font-weight: 400; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s4); }
+  .card > h2 { font-size: 14px; font-weight: 600; margin: 0 0 var(--s3); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s3); }
+  .card-head h2 { font-size: 14px; font-weight: 600; margin: 0; }
+  .sub { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .hint { margin: 0 0 var(--s3); font-size: 13px; color: var(--muted); }
+  .spaced { margin-top: var(--s3); }
+  .device-name { font-size: 16px; font-weight: 500; margin-bottom: var(--s1); }
+  .device-item { padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+  .device-item:last-child { border-bottom: 0; }
+  .device-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s1); }
 
-  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .metric { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
-  .metric .label { font-size: 12px; color: var(--muted); }
-  .metric .value { font-size: 19px; font-weight: 650; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .metric .change { font-size: 11px; margin-top: 2px; color: var(--muted); }
-  .metric .change.up { color: #16a34a; }
-  .metric .change.down { color: var(--danger); }
+  .hero-value { font-size: 32px; font-weight: 600; line-height: 1.1; }
+  .hero-sub { margin-top: var(--s1); font-size: 13px; color: var(--muted); }
+  .up { color: var(--warn); }
+  .down { color: var(--ok); }
+  .stat-list { margin-top: var(--s3); border-top: 1px solid var(--line); }
+  .stat-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s4); padding: var(--s2) 0; }
+  .stat-label { font-size: 13px; color: var(--muted); }
+  .stat-value { font-size: 14px; font-weight: 500; }
 
-  .alert { border: 1px solid var(--danger); border-radius: 14px; padding: 12px 14px; font-size: 13px; background: var(--surface); }
-  .alert b { display: block; margin-bottom: 2px; }
+  .alert { border: 1px solid var(--warn-soft); background: var(--warn-soft); color: var(--warn); border-radius: var(--r-control); padding: var(--s3); font-size: 13px; }
+  .alert b { display: block; margin-bottom: var(--s1); font-weight: 600; }
 
-  .segments { display: flex; gap: 6px; background: var(--bg); padding: 4px; border-radius: 12px; }
-  .segments button { flex: 1; border: 0; background: none; color: var(--muted); padding: 9px 0; border-radius: 9px; font-size: 13px; font-weight: 500; }
-  .segments button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  canvas { width: 100%; height: 170px; display: block; margin-top: 10px; }
+  .segments { display: flex; gap: var(--s1); margin-bottom: var(--s3); }
+  .segments button { flex: 1; min-height: 44px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: var(--r-control); font-size: 13px; font-weight: 500; font-family: inherit; }
+  .segments button.on { border-color: var(--text); color: var(--text); font-weight: 600; }
+  canvas { width: 100%; height: 160px; display: block; }
 
-  .analysis { display: grid; gap: 16px; }
-  .bar-row .top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
-  .bar-row .track { height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; }
-  .bar-row .fill { height: 100%; border-radius: 4px; background: var(--accent); }
-  .bar-row .share { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .group-label { font-size: 13px; color: var(--muted); margin-bottom: var(--s2); }
+  .analysis { display: grid; gap: var(--s6); }
+  .bar-row { display: grid; gap: var(--s1); padding: var(--s2) 0; }
+  .bar-top { display: flex; justify-content: space-between; gap: var(--s3); font-size: 13px; }
+  .bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-figure { color: var(--muted); white-space: nowrap; }
+  .track { height: 4px; border-radius: var(--r-pill); background: var(--line); overflow: hidden; }
+  .fill { height: 100%; border-radius: var(--r-pill); background: var(--primary); }
+  .foot { margin: var(--s3) 0 0; font-size: 12px; color: var(--muted); }
 
-  .limit { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
-  .limit input { width: 90px; padding: 9px 10px; font-size: 17px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+  .inline-field { display: flex; align-items: center; gap: var(--s2); font-size: 13px; color: var(--muted); }
+  .inline-field input { width: 96px; }
 
-  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .actions button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 14px; padding: 14px 10px; font-size: 14px; font-weight: 500; min-height: 48px; }
-  .actions button:active { background: var(--accent-soft); }
-  .actions button:disabled { opacity: .5; }
-  .status { margin-top: 10px; font-size: 13px; color: var(--muted); min-height: 18px; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+  .actions > :only-child { grid-column: 1 / -1; }
+  .btn { min-height: 44px; padding: 0 var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 500; font-family: inherit; }
+  .btn:disabled, .primary:disabled { opacity: .5; }
+  .btn.block { width: 100%; margin-top: var(--s3); }
+  .primary { width: 100%; min-height: 48px; margin-top: var(--s3); border: 0; border-radius: var(--r-control); padding: 0 var(--s4); background: var(--primary); color: var(--primary-text); font-size: 16px; font-weight: 600; font-family: inherit; }
+  .login .primary { margin-top: 0; }
+  .text-btn { min-height: 44px; padding: 0 var(--s2); border: 0; background: none; color: var(--muted); font-size: 13px; font-family: inherit; }
+  .text-btn:disabled { opacity: .5; }
+  .danger-text { color: var(--danger); }
+  .status { margin-top: var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-control); background: var(--bg); color: var(--muted); font-size: 13px; }
+  .status.ok { background: var(--ok-soft); border-color: var(--ok-soft); color: var(--ok); }
+  .status.fail { background: var(--danger-soft); border-color: var(--danger-soft); color: var(--danger); }
 
-  .rows { display: grid; gap: 2px; }
-  .row { display: flex; align-items: baseline; gap: 8px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+  .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 0 var(--s2); border-radius: var(--r-pill); font-size: 12px; font-weight: 500; }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.pending { background: var(--bg); color: var(--muted); border: 1px solid var(--line-strong); }
+  .badge.fail { background: var(--danger-soft); color: var(--danger); }
+
+  .rows { display: grid; }
+  .row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: var(--s3); align-items: baseline; padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
-  .row .day { font-size: 12px; color: var(--muted); width: 44px; flex: none; }
-  .row .what { flex: 1; min-width: 0; }
+  .row .what { min-width: 0; }
+  .row .day { font-size: 12px; color: var(--muted); }
   .row .name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .cost { font-size: 14px; font-variant-numeric: tabular-nums; }
-  .row .cost.unpriced { font-size: 11px; color: var(--muted); }
+  .row .meta { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .cost { font-size: 14px; font-weight: 500; text-align: right; }
+  .row .cost.unpriced { font-size: 12px; font-weight: 400; color: var(--muted); }
 
-  .login { max-width: 380px; margin: 12vh auto 0; display: grid; gap: 12px; }
-  .login h2 { font-size: 22px; margin: 0 0 4px; }
+  .empty { font-size: 13px; color: var(--muted); background: var(--bg); border: 1px dashed var(--line-strong); border-radius: var(--r-control); padding: var(--s3); }
+
+  .login { max-width: 380px; margin: 8vh auto 0; display: grid; gap: var(--s3); }
+  .login h2 { font-size: 20px; font-weight: 600; margin: 0; }
   .login p { margin: 0; color: var(--muted); font-size: 13px; }
-  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+  .login-switch { justify-self: center; }
+  .field { margin-top: var(--s3); }
+  .card > .field:first-of-type { margin-top: 0; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: var(--s1); }
   input, textarea, select {
-    width: 100%; padding: 13px 14px; font-size: 17px; color: var(--text);
-    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-family: inherit;
+    width: 100%; padding: var(--s3); font-size: 16px; font-family: inherit; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-control);
   }
   textarea { min-height: 96px; resize: vertical; }
-  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  .primary { width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 600; background: var(--accent); color: #fff; margin-top: 4px; }
-  .primary:disabled { opacity: .55; }
-  .error { color: var(--danger); font-size: 13px; min-height: 18px; }
-  .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
-  pre.result { margin: 10px 0 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; font-size: 13px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
-  .session-flow { margin-top: 18px; border-top: 3px solid var(--accent); padding-top: 18px; }
-  .session-meta { font: 12px/1.65 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
-  .session-choice { width: 100%; text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; }
-  .session-choice.on { border-color: var(--accent); outline: 1px solid var(--accent); }
-  .session-consent { display: flex; align-items: flex-start; gap: 9px; color: var(--text); font-size: 13px; padding: 8px 0; }
-  .session-consent input { width: 20px; min-height: 20px; flex: none; margin: 0; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--text); outline-offset: -1px; }
+  .error { color: var(--danger); font-size: 13px; }
+  pre.result { margin: var(--s3) 0 0; padding: var(--s3); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-control); font: 12px/1.6 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+  .session-meta { margin: 0 0 var(--s2); font-size: 12px; color: var(--muted); line-height: 1.7; overflow-wrap: anywhere; }
+  .session-choice { display: block; width: 100%; min-height: 44px; text-align: left; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-control); padding: var(--s3); margin-top: var(--s2); font-family: inherit; }
+  .session-choice.on { border-color: var(--text); }
+  .choice-name { display: block; font-size: 14px; font-weight: 500; }
+  .choice-meta { display: block; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-consent { display: flex; align-items: flex-start; gap: var(--s2); color: var(--text); font-size: 13px; padding: var(--s2) 0; }
+  .session-consent input { width: 20px; height: 20px; flex: none; margin: 2px 0 0; }
 
-  .chat { display: grid; gap: 10px; }
-  .picker { display: grid; gap: 2px; margin-bottom: 12px; }
-  .msg { max-width: 88%; padding: 10px 12px; border-radius: 14px; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-  .msg.user { justify-self: end; background: var(--accent); color: #fff; }
+  .chat { display: grid; gap: var(--s2); margin-top: var(--s3); }
+  .msg { max-width: 88%; padding: var(--s2) var(--s3); border-radius: var(--r-card); font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .msg.user { justify-self: end; background: var(--primary); color: var(--primary-text); }
   .msg.assistant { justify-self: start; background: var(--bg); border: 1px solid var(--line); }
-  .composer { display: grid; gap: 8px; }
+  .composer { display: grid; gap: var(--s2); margin-top: var(--s2); }
+  .composer .primary { margin-top: 0; }
+
+  details.card > summary { display: flex; align-items: center; gap: var(--s2); min-height: 44px; font-size: 14px; font-weight: 600; cursor: pointer; list-style: none; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::after { content: '›'; margin-left: auto; color: var(--muted); font-size: 16px; transform: rotate(90deg); }
+  details.card[open] > summary::after { transform: rotate(-90deg); }
+  details.card[open] > summary { margin-bottom: var(--s3); }
 
   nav.tabs {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
-    display: flex; gap: 4px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    display: flex; gap: var(--s1); padding: var(--s1) var(--s3) calc(var(--s1) + env(safe-area-inset-bottom));
     background: var(--surface); border-top: 1px solid var(--line);
   }
-  nav.tabs button { flex: 1; border: 0; background: none; color: var(--muted); font-size: 12px; padding: 8px 0; border-radius: 10px; }
-  nav.tabs button.on { color: var(--text); background: var(--accent-soft); font-weight: 600; }
+  nav.tabs button { flex: 1; min-height: 48px; border: 0; background: none; color: var(--muted); font-size: 12px; font-family: inherit; }
+  nav.tabs button.on { color: var(--text); font-weight: 600; }
 </style>
 </head>
 <body>
 <div id="app">
   <header v-if="signedIn">
-    <div class="mark">用</div>
-    <h1>{{ tab === 'chat' ? '对话' : tab === 'task' ? '任务' : tab === 'settings' ? '设置' : '用量面板' }}</h1>
+    <h1>{{ pageTitle }}</h1>
     <div class="spacer"></div>
-    <button @click="refreshAll">刷新</button>
-    <button @click="switchTab('settings')">设置</button>
-    <button @click="signOut">退出</button>
+    <button class="text-btn" @click="signOut">退出</button>
   </header>
 
   <main v-if="signedIn">
-    <section v-show="tab === 'usage'">
-      <div class="metrics">
-        <div class="metric">
-          <div class="label">今日花费</div>
-          <div class="value">¥{{ money(todayCny) }}</div>
-          <div class="change" :class="todayChangeClass">${{ money(todayCost) }} · {{ todayChangeText }}</div>
-        </div>
-        <div class="metric">
-          <div class="label">今日 tokens</div>
-          <div class="value">{{ compact(todayTokens) }}</div>
-          <div class="change" :class="tokenChangeClass">{{ tokenChangeText }}</div>
-        </div>
-        <div class="metric">
-          <div class="label">近 30 天</div>
-          <div class="value">¥{{ money(last30Cny) }}</div>
-          <div class="change">${{ money(last30) }}</div>
-        </div>
-      </div>
+    <section v-show="tab === 'usage'" class="page">
+      <p class="lede">{{ headline }}</p>
 
-      <div class="alert" v-if="isOverLimit" style="margin-top:12px">
-        <b>今日花费已超过提醒线</b>
+      <section class="card">
+        <div class="hero-value">¥{{ money(todayCny) }}</div>
+        <div class="hero-sub"><span :class="todayChangeClass">{{ changePct !== null ? todayChangeText : '今天还没有可比的昨日数据' }}</span></div>
+        <div class="stat-list">
+          <div class="stat-row"><span class="stat-label">近 30 天</span><span class="stat-value">¥{{ money(last30Cny) }}</span></div>
+          <div class="stat-row"><span class="stat-label">今日 tokens</span><span class="stat-value">{{ compact(todayTokens) }}</span></div>
+        </div>
+      </section>
+
+      <div class="alert" v-if="isOverLimit">
+        <b>已超过提醒线</b>
         今天已经用了 ¥{{ money(todayCny) }}，提醒线是 ¥{{ limitCny }}。
       </div>
 
-      <section class="card" style="margin-top:12px">
+      <section class="card">
         <h2>每天的花费</h2>
         <div class="segments">
           <button v-for="n in [7, 30, 90]" :key="n" :class="{ on: days === n }" @click="setDays(n)">{{ n }} 天</button>
         </div>
         <canvas ref="chart"></canvas>
-        <div v-if="!inRange.length" class="empty">这段时间没有数据。</div>
+        <div v-if="!inRange.length" class="empty">这段时间没有数据。启动电脑上的后台程序后，这里会自动出现。</div>
       </section>
 
-      <section class="card" style="margin-top:12px">
-        <h2>用量分析 <span class="sub">近 30 天 · 1 美元 ≈ ¥{{ rate.toFixed(2) }}</span></h2>
+      <section class="card">
+        <h2>用量分析 <span class="sub">近 30 天</span></h2>
         <div class="analysis">
           <div>
-            <div class="top"><span class="sub">按客户端</span></div>
+            <div class="group-label">按客户端</div>
             <div class="bar-row" v-for="row in byClient" :key="row.name">
-              <div class="top"><span>{{ row.name }}</span><span>¥{{ money(row.cny) }}</span></div>
+              <div class="bar-top"><span class="bar-name">{{ row.name }}</span><span class="bar-figure">¥{{ money(row.cny) }} · {{ (row.share * 100).toFixed(1) }}%</span></div>
               <div class="track"><div class="fill" :style="{ width: (row.share * 100).toFixed(1) + '%' }"></div></div>
-              <div class="share">{{ (row.share * 100).toFixed(1) }}%</div>
             </div>
             <div v-if="!byClient.length" class="empty">还没有已计价的用量。</div>
           </div>
           <div>
-            <div class="top"><span class="sub">按 API 厂家</span></div>
+            <div class="group-label">按 API 厂家</div>
             <div class="bar-row" v-for="row in byProvider" :key="row.name">
-              <div class="top"><span>{{ row.name }}</span><span>¥{{ money(row.cny) }}</span></div>
+              <div class="bar-top"><span class="bar-name">{{ row.name }}</span><span class="bar-figure">¥{{ money(row.cny) }} · {{ (row.share * 100).toFixed(1) }}%</span></div>
               <div class="track"><div class="fill" :style="{ width: (row.share * 100).toFixed(1) + '%' }"></div></div>
-              <div class="share">{{ (row.share * 100).toFixed(1) }}%</div>
             </div>
             <div v-if="!byProvider.length" class="empty">还没有已计价的用量。</div>
           </div>
         </div>
+        <p class="foot">汇率按 1 美元 ≈ ¥{{ rate.toFixed(2) }} 估算。</p>
       </section>
 
-      <section class="card" style="margin-top:12px">
-        <h2>单日提醒</h2>
-        <div class="limit">
-          <span>今日超过</span>
-          <input type="number" inputmode="decimal" min="0" step="10" v-model.number="limitCny" />
+      <section class="card">
+        <h2>提醒线</h2>
+        <div class="inline-field">
+          <span>今日花费超过</span>
+          <input type="number" inputmode="decimal" min="0" step="10" v-model.number="limitCny" aria-label="每日提醒金额" />
           <span>元时提醒</span>
         </div>
       </section>
 
-      <section class="card" style="margin-top:12px">
-        <h2>控制台</h2>
-        <div class="actions">
-          <button v-for="a in actions" :key="a.key" :disabled="busy" @click="send(a.key)">{{ a.label }}</button>
-        </div>
-        <div class="status">{{ status }}</div>
-      </section>
-
-      <section class="card" style="margin-top:12px">
-        <h2>明细</h2>
+      <section class="card">
+        <div class="card-head"><h2>明细</h2><button class="text-btn" @click="refreshAll">更新</button></div>
         <div class="rows">
           <div v-for="(r, i) in rows" :key="i" class="row">
             <div class="day">{{ r.dayText }}</div>
@@ -222,153 +250,231 @@
             </div>
             <div class="cost" :class="{ unpriced: !r.priced }">{{ r.priced ? '¥' + money(r.cny) : '未计价' }}</div>
           </div>
-          <div v-if="!rows.length" class="empty">还没有数据：先让家里的 agent 跑一次。</div>
+          <div v-if="!rows.length" class="empty">还没有数据。启动电脑上的后台程序后，这里会自动出现。</div>
+        </div>
+      </section>
+
+      <details class="card">
+        <summary>更多</summary>
+        <div class="actions">
+          <button class="btn" v-for="a in actions" :key="a.key" :disabled="busy" @click="send(a.key)">{{ a.label }}</button>
+        </div>
+        <div class="status" v-if="status" :class="stateOf(status)">{{ status }}</div>
+      </details>
+    </section>
+
+    <section v-show="tab === 'task'" class="page">
+      <p class="lede">把任务交给电脑上的 Codex，任务在电脑上执行，结果回到这里。</p>
+
+      <section class="card">
+        <h2>交给哪台电脑</h2>
+        <div class="field">
+          <label for="task-device">电脑</label>
+          <select id="task-device" v-model="sessionDevice" :disabled="sessionBusy || taskBusy" @change="resetPhoneSessions()">
+            <option value="">请选择电脑</option><option v-for="d in sessionDevices" :key="d.id" :value="d.id">{{ d.name || d.id }} · {{ formatDeviceLastSeen(d.last_seen) }}</option>
+          </select>
+        </div>
+        <div class="actions spaced">
+          <button class="btn" :disabled="sessionBusy || taskBusy" @click="loadSessionDevices">读取电脑列表</button>
+        </div>
+        <p class="sub spaced">没选电脑时不会派发任何任务。历史和 API Key 留在电脑。</p>
+      </section>
+
+      <section class="card">
+        <h2>快速任务</h2>
+        <div class="field">
+          <label for="taskPrompt">任务内容</label>
+          <textarea id="taskPrompt" v-model="taskPrompt" placeholder="例如：找出这个项目里所有 TODO 并整理成清单"></textarea>
+        </div>
+        <div class="field">
+          <label for="taskCwd">工作目录</label>
+          <select id="taskCwd" v-model="taskCwd">
+            <option v-for="root in taskRoots" :key="root" :value="root">{{ root }}</option>
+          </select>
+        </div>
+        <button class="primary" :disabled="taskBusy || !sessionDevice" @click="sendTask">{{ taskBusy ? '执行中…' : '发送任务' }}</button>
+        <div class="status pending" v-if="!sessionDevice">先在上面选择一台电脑。</div>
+        <div class="status" v-else-if="taskStatus" :class="stateOf(taskStatus)">{{ taskStatus }}</div>
+        <pre v-if="taskResult" class="result">{{ taskResult }}</pre>
+      </section>
+
+      <section class="card">
+        <h2>从会话派生（只读）</h2>
+        <p class="sub">使用上方选择的电脑{{ sessionDevice ? '：' + sessionDeviceName : '（尚未选择）' }}。流程依次是列表、预览、草稿、执行。</p>
+        <div class="actions">
+          <button class="btn" :disabled="sessionBusy || !sessionDevice || sessionCanRecover" @click="listPhoneSessions(false)">读取会话列表</button>
+        </div>
+        <button v-for="s in sessionRows" :key="s.sourceThreadId" class="session-choice" :class="{ on: sessionSelected === s.sourceThreadId }" :disabled="sessionBusy || sessionCanRecover" @click="selectPhoneSession(s.sourceThreadId)">
+          <span class="choice-name">{{ s.name }}</span>
+          <span class="choice-meta">{{ s.cwd }}</span>
+          <span class="choice-meta">模型 {{ s.model || '—' }} · 供应商 {{ s.provider || '—' }}</span>
+        </button>
+        <div class="actions spaced">
+          <button class="btn" :disabled="sessionBusy || !sessionSelected || sessionCanRecover" @click="previewPhoneSession">读取预览</button>
+          <button class="btn" :disabled="sessionBusy || !sessionCursor || sessionCanRecover" @click="listPhoneSessions(true)">下一页</button>
+        </div>
+        <section v-if="sessionPreview" class="spaced">
+          <p class="session-meta">来源会话：{{ sessionTitle(sessionPreview.sourceThreadId) }}<br>已完成回合：{{ sessionPreview.turnCount }}</p>
+          <pre class="result">{{ sessionPreview.excerpt || '没有可展示的文字摘录。' }}</pre>
+          <p class="sub">这是有限脱敏摘录，工具输出未上传；派生会继承完整前缀、工具记录及可能的隐藏上下文，不等于只发送摘录。</p>
+          <div class="field">
+            <label for="session-cwd">派生工作目录（在电脑白名单中校验）</label>
+            <input id="session-cwd" v-model="sessionCwd" :disabled="sessionBusy || sessionSubmitted" @input="phoneCwdChanged" />
+          </div>
+          <label class="session-consent"><input type="checkbox" v-model="sessionCwdConsent" :disabled="sessionBusy" />我已核对目录。新会话不代表文件隔离，可能共用同一工作目录；本次请求只读。</label>
+          <button class="btn block" :disabled="sessionBusy || !sessionCwdConsent || !sessionCwd.trim() || sessionCanRecover || !!sessionDraft" @click="preparePhoneSession">创建派生草稿</button>
+        </section>
+        <section v-if="sessionDraft" class="spaced">
+          <p class="session-meta">来源会话：{{ sessionTitle(sessionDraft.sourceThreadId) }}<br>新会话：独立新会话<br>目录：{{ sessionDraft.cwd }}<br>模型：{{ sessionDraft.model || '—' }}<br>供应商：{{ sessionDraft.provider || '—' }}<br>权限：只读</p>
+          <div class="field">
+            <label for="session-task">新任务（只读分析）</label>
+            <textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft'" placeholder="例如：只回复 FORK-SESSION-OK，不读写文件或调用工具。"></textarea>
+          </div>
+          <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft'" />我确认将完整历史前缀、工具记录及隐藏上下文和新任务发给上述本机供应商配置；API Key 留在电脑。最终助手回复将临时回传给本次派单账号。</label>
+          <button class="btn block" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft' || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="executePhoneSession">明确执行一次</button>
+        </section>
+        <div class="status" v-if="sessionStatus" :class="stateOf(sessionStatus)" role="status" aria-live="polite">{{ sessionStatus }}</div>
+        <pre v-if="sessionFinalReply" class="result" aria-label="该次最终助手回复">{{ sessionFinalReply }}</pre>
+        <p v-if="sessionResultExpires" class="sub spaced">该次结果有效期至 {{ sessionResultExpires }}。最多显示 1.6 万字符，到期正文不可读取。</p>
+        <div class="actions spaced">
+          <button class="btn" :disabled="sessionBusy || (!sessionCanRecover && !sessionDraft && !sessionResultRequest)" @click="checkPhoneSession">查询结果</button>
+          <button class="btn" :disabled="sessionCancelling || (!sessionDraft && !sessionLastRequest && !sessionResultRequest)" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消请求' }}</button>
+        </div>
+        <p class="sub spaced">断线不代表未执行；取消无法撤回已发送的模型请求。刷新只查询已有结果，不自动重发任务。浏览器只保存关联 ID，不保存任务或回复正文。</p>
+      </section>
+    </section>
+
+    <section v-show="tab === 'chat'" class="page">
+      <p class="lede">经服务端转发，模型的密钥不会到手机。</p>
+      <section class="card">
+        <h2>对话</h2>
+        <div class="field">
+          <label for="chatRoute">供应商</label>
+          <select id="chatRoute" v-model="chatRoute" @change="loadCatalog()">
+            <option v-for="r in routes" :key="r.name" :value="r.name">{{ r.label }}</option>
+            <option v-if="!routes.length" value="">（还没配置供应商）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="chatModel">模型 <span class="sub" v-if="models.length">共 {{ models.length }} 个</span></label>
+          <select v-if="models.length" id="chatModel" v-model="chatModel">
+            <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <input v-else id="chatModel" v-model="chatModel" placeholder="这个供应商没回列表，手动填写模型名" />
+        </div>
+        <div class="status" v-if="catalogStatus" :class="stateOf(catalogStatus)">{{ catalogStatus }}</div>
+        <div class="chat">
+          <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">{{ m.content || '…' }}</div>
+          <div v-if="!messages.length" class="empty">还没有消息。问一句试试。</div>
+        </div>
+        <div class="composer">
+          <textarea v-model="chatInput" placeholder="问点什么…"></textarea>
+          <button class="primary" :disabled="chatBusy" @click="sendChat">{{ chatBusy ? '回复中…' : '发送' }}</button>
+          <div class="status" v-if="chatStatus" :class="stateOf(chatStatus)">{{ chatStatus }}</div>
         </div>
       </section>
     </section>
 
-    <section v-show="tab === 'task'" class="card">
-      <h2>让电脑上的 Codex 干活</h2>
-      <label for="taskPrompt">任务内容</label>
-      <textarea id="taskPrompt" v-model="taskPrompt" placeholder="例如：找出这个项目里所有 TODO 并整理成清单"></textarea>
-      <label for="taskCwd">工作目录</label>
-      <select id="taskCwd" v-model="taskCwd">
-        <option v-for="root in taskRoots" :key="root" :value="root">{{ root }}</option>
-      </select>
-      <button class="primary" :disabled="taskBusy" @click="sendTask">{{ taskBusy ? '执行中…' : '发送任务' }}</button>
-      <div class="status">{{ taskStatus }}</div>
-      <pre v-if="taskResult" class="result">{{ taskResult }}</pre>
-      <section class="session-flow" aria-labelledby="session-heading">
-        <h2 id="session-heading">从本机会话派生 · 默认只读</h2>
-        <p class="sub">列表 → 明确预览 → 独立草稿 → 确认执行。API Key、完整历史和模型调用留在电脑。完成后可在手机查看该次最终助手回复，不提供原地 resume。</p>
-        <div class="actions"><button :disabled="sessionBusy" @click="loadSessionDevices">读取我的电脑</button><button :disabled="sessionBusy || !sessionDevice || sessionCanRecover" @click="listPhoneSessions(false)">读取会话列表</button></div>
-        <label for="session-device">本次操作的电脑</label>
-        <select id="session-device" v-model="sessionDevice" :disabled="sessionBusy" @change="resetPhoneSessions()">
-          <option value="">请选择电脑</option><option v-for="d in sessionDevices" :key="d.id" :value="d.id">{{ d.name || d.id }} · {{ d.last_seen || '未上报' }}</option>
-        </select>
-        <button v-for="s in sessionRows" :key="s.sourceThreadId" class="session-choice" :class="{ on: sessionSelected === s.sourceThreadId }" :disabled="sessionBusy || sessionCanRecover" @click="selectPhoneSession(s.sourceThreadId)">
-          <strong>{{ s.name }}</strong><div class="session-meta">{{ s.sourceThreadId }}<br>{{ s.cwd }}<br>{{ s.model }} · {{ s.provider }}</div>
-        </button>
-        <div class="actions" style="margin-top:10px"><button :disabled="sessionBusy || !sessionSelected || sessionCanRecover" @click="previewPhoneSession">读取选中会话预览</button><button :disabled="sessionBusy || !sessionCursor || sessionCanRecover" @click="listPhoneSessions(true)">下一页</button></div>
-        <section v-if="sessionPreview">
-          <p class="session-meta">source_thread_id：{{ sessionPreview.sourceThreadId }}<br>已完成回合：{{ sessionPreview.turnCount }}<br>截止：{{ sessionPreview.cutoffTurnId }}</p>
-          <pre class="result">{{ sessionPreview.excerpt || '没有可展示的文字摘录。' }}</pre>
-          <p class="sub">这是有限脱敏摘录，工具输出未上传；派生继承完整前缀、工具记录及可能的隐藏上下文，不等于仅发送摘录。</p>
-          <label for="session-cwd">派生工作目录（在电脑白名单中校验）</label>
-          <input id="session-cwd" v-model="sessionCwd" :disabled="sessionBusy || sessionSubmitted" @input="phoneCwdChanged" />
-          <label class="session-consent"><input type="checkbox" v-model="sessionCwdConsent" :disabled="sessionBusy" />我已核对目录。新 thread 不代表文件隔离，可能共享同一工作目录；本次请求只读。</label>
-          <button class="primary" :disabled="sessionBusy || !sessionCwdConsent || !sessionCwd.trim() || sessionCanRecover || !!sessionDraft" @click="preparePhoneSession">创建独立派生草稿</button>
-        </section>
-        <section v-if="sessionDraft">
-          <p class="session-meta">source_thread_id：{{ sessionDraft.sourceThreadId }}<br>new_thread_id：{{ sessionDraft.newThreadId }}<br>目录：{{ sessionDraft.cwd }}<br>模型：{{ sessionDraft.model }} · {{ sessionDraft.provider }}<br>权限：{{ sessionDraft.sandbox || 'read-only' }}</p>
-          <label for="session-task">新任务（只读分析）</label><textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft'" placeholder="例如：只回复 FORK-SESSION-OK，不读写文件或调用工具。"></textarea>
-          <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft'" />我确认将完整历史前缀、工具记录及隐藏上下文和新任务发给上述本机供应商。请先在电脑上核对供应商的实际服务地址。API Key 留在电脑。最终助手回复将临时回传给本次派单账号。</label>
-          <button class="primary" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft' || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="executePhoneSession">明确执行一次新任务</button>
-        </section>
-        <div class="status" role="status" aria-live="polite">{{ sessionStatus }}</div>
-        <pre v-if="sessionFinalReply" class="result" aria-label="该次最终助手回复">{{ sessionFinalReply }}</pre>
-        <p v-if="sessionResultExpires" class="sub">该次结果有效期至 {{ sessionResultExpires }}。最多展示 16 KiB；到期正文不可读取。</p>
-        <div class="actions" style="margin-top:10px"><button :disabled="sessionBusy || (!sessionCanRecover && !sessionDraft && !sessionResultRequest)" @click="checkPhoneSession">只查询结果 / 恢复状态</button><button :disabled="sessionCancelling || (!sessionDraft && !sessionLastRequest && !sessionResultRequest)" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消并停止本地连接' }}</button></div>
-        <p class="sub">断线不代表未执行；取消无法撤回已发送的模型请求。刷新只查询已有结果，不自动重发任务。浏览器只保存关联 ID，不保存任务或回复正文。</p>
+    <section v-show="tab === 'settings'" class="page">
+      <p class="lede">查看最近在线的电脑、其他电脑和账号。</p>
+      <div class="status" v-if="settingsStatus" :class="stateOf(settingsStatus)">{{ settingsStatus }}</div>
+
+      <section class="card" v-if="primaryDevice">
+        <div class="card-head">
+          <h2>{{ primaryDeviceTitle }}</h2>
+          <span class="badge" :class="deviceBadgeClass(primaryDevice)">{{ deviceBadgeText(primaryDevice) }}</span>
+        </div>
+        <div class="device-name">{{ primaryDevice.name || '未命名电脑' }}</div>
+        <div class="sub">{{ formatDeviceLastSeen(primaryDevice.last_seen) }}</div>
+        <div class="actions spaced">
+          <button class="btn" :disabled="settingsBusy || !!verifyingDevice || !!primaryDevice.revoked_at" @click="verifyInstallation(primaryDevice)">{{ verifyingDevice === primaryDevice.id ? '验收中…' : '验收安装' }}</button>
+          <button class="btn" :disabled="settingsBusy || !!verifyingDevice" @click="issueToken(primaryDevice)">重新生成口令</button>
+        </div>
+        <div v-if="deviceChecks[primaryDevice.id]" class="status" :class="stateOf(deviceChecks[primaryDevice.id])">{{ deviceChecks[primaryDevice.id] }}</div>
+        <button v-if="!primaryDevice.revoked_at" class="text-btn danger-text" :disabled="settingsBusy || !!verifyingDevice" @click="revokeDevice(primaryDevice)">停用</button>
       </section>
-    </section>
 
-    <section v-show="tab === 'chat'" class="card">
-      <h2>对话 <span class="sub">经服务端转发，key 不会到手机</span></h2>
-      <div class="picker">
-        <label for="chatRoute">供应商</label>
-        <select id="chatRoute" v-model="chatRoute" @change="loadCatalog()">
-          <option v-for="r in routes" :key="r.name" :value="r.name">{{ r.label }}</option>
-          <option v-if="!routes.length" value="">（还没配 CHAT_ROUTES）</option>
-        </select>
-        <label for="chatModel">模型 <span class="sub" v-if="models.length">共 {{ models.length }} 个</span></label>
-        <select v-if="models.length" id="chatModel" v-model="chatModel">
-          <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
-        </select>
-        <input v-else id="chatModel" v-model="chatModel" placeholder="这个供应商没回列表，手填模型名" />
-        <div class="status">{{ catalogStatus }}</div>
-      </div>
-      <div class="chat">
-        <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">{{ m.content || '…' }}</div>
-        <div v-if="!messages.length" class="empty">还没有消息。问一句试试。</div>
-      </div>
-      <div class="composer" style="margin-top:12px">
-        <textarea v-model="chatInput" placeholder="问点什么…"></textarea>
-        <button class="primary" :disabled="chatBusy" @click="sendChat">{{ chatBusy ? '回复中…' : '发送' }}</button>
-        <div class="status">{{ chatStatus }}</div>
-      </div>
-    </section>
+      <section class="card" v-if="!devices.length">
+        <h2>电脑</h2>
+        <div class="empty">还没有添加电脑。先在下面添加，再在电脑上装好后台程序。</div>
+      </section>
 
-    <section v-show="tab === 'settings'">
-      <section v-if="isAdmin" class="card">
-        <h2>管理员 · 邀请码</h2>
-        <p class="sub">邀请码一次性使用，默认 30 天过期。</p>
-        <button class="primary" :disabled="settingsBusy" @click="generateInvite">{{ settingsBusy ? '处理中…' : '生成邀请码' }}</button>
-        <pre v-if="inviteResult" class="result">邀请码（仅显示这一次）：
-{{ inviteResult.code }}
+      <details class="card" v-if="otherDevices.length">
+        <summary>其他电脑（{{ otherDevices.length }}）</summary>
+        <div v-for="device in otherDevices" :key="device.id" class="device-item">
+          <div class="bar-top"><span class="bar-name">{{ device.name || '未命名电脑' }}</span><span class="badge" :class="deviceBadgeClass(device)">{{ deviceBadgeText(device) }}</span></div>
+          <div class="sub">{{ formatDeviceLastSeen(device.last_seen) }}</div>
+          <div class="device-actions">
+            <button class="text-btn" :disabled="settingsBusy || !!verifyingDevice || !!device.revoked_at" @click="verifyInstallation(device)">验收安装</button>
+            <button class="text-btn" :disabled="settingsBusy || !!verifyingDevice" @click="issueToken(device)">{{ device.revoked_at ? '恢复并重新生成' : '重新生成口令' }}</button>
+            <button v-if="!device.revoked_at" class="text-btn danger-text" :disabled="settingsBusy || !!verifyingDevice" @click="revokeDevice(device)">停用</button>
+          </div>
+          <div v-if="deviceChecks[device.id]" class="status" :class="stateOf(deviceChecks[device.id])">{{ deviceChecks[device.id] }}</div>
+        </div>
+      </details>
 
-有效期至：{{ inviteResult.expires_at }}</pre>
+      <section class="card">
+        <h2>添加电脑</h2>
+        <div class="field">
+          <label for="newDeviceName">名称</label>
+          <input id="newDeviceName" v-model="newDeviceName" maxlength="120" placeholder="例如：家里的 Windows 电脑" />
+        </div>
+        <button class="primary" :disabled="settingsBusy" @click="bindDevice">{{ settingsBusy ? '处理中…' : '添加' }}</button>
+        <p class="sub spaced">添加一次即可。装好后台程序后，它会自动出现在上面。</p>
+        <p class="sub">在电脑上解压管理员提供的 UsageAgent 发布包，双击 install.cmd；安装器会询问项目地址、电脑编号和安装口令。基础监控无需安装 Codex CLI。</p>
+        <pre v-if="issuedDevice" class="result">电脑编号：
+{{ issuedDevice.device_id }}
+
+安装口令（只显示这一次）：
+{{ issuedDevice.device_token }}</pre>
+        <button v-if="issuedDevice" class="text-btn" @click="issuedDevice = null">已粘贴到安装器，隐藏安装信息</button>
+        <p class="sub">安装完成后点“验收安装”，检查最近心跳、真实用量和 ping 回执。零用量不会被当作已验证采集。</p>
       </section>
 
       <section class="card">
         <h2>个人资料</h2>
-        <label for="displayName">显示名称</label>
-        <input id="displayName" v-model="displayName" maxlength="80" placeholder="例如：家里用户" />
-        <button class="primary" :disabled="settingsBusy" @click="saveProfile">保存资料</button>
-        <div class="status">{{ settingsStatus }}</div>
-      </section>
-      <section class="card" style="margin-top:12px">
-        <h2>我的设备</h2>
-        <label for="newDeviceName">绑定新设备</label>
-        <input id="newDeviceName" v-model="newDeviceName" maxlength="120" placeholder="例如：家里的 Windows 电脑" />
-        <button class="primary" :disabled="settingsBusy" @click="bindDevice">{{ settingsBusy ? '处理中…' : '绑定并签发令牌' }}</button>
-        <div class="sub">将设备 ID 填入 UsageAgent 的 DeviceId，将令牌填入 DeviceToken。令牌只在签发时显示一次；遗失后可重新签发。</div>
-        <div class="rows">
-          <div v-for="device in devices" :key="device.id" class="row">
-            <div class="what">
-              <div class="name">{{ device.name || '未命名设备' }}</div>
-              <div class="meta">{{ device.id }} · {{ device.revoked_at ? '已吊销' : (device.last_seen || '未上报') }}</div>
-            </div>
-            <div class="actions" style="display:flex;gap:6px">
-              <button :disabled="settingsBusy" @click="issueToken(device)">{{ device.revoked_at ? '恢复并重新签发' : '重新签发' }}</button>
-              <button :disabled="settingsBusy || !!device.revoked_at" @click="revokeDevice(device)">吊销</button>
-            </div>
-          </div>
-          <div v-if="!devices.length" class="empty">还没有设备。</div>
+        <div class="field">
+          <label for="displayName">显示名称</label>
+          <input id="displayName" v-model="displayName" maxlength="80" placeholder="例如：家里用户" />
         </div>
-        <pre v-if="issuedDevice" class="result">DeviceId：
-{{ issuedDevice.device_id }}
+        <button class="btn spaced" :disabled="settingsBusy" @click="saveProfile">保存资料</button>
+      </section>
 
-DeviceToken（只显示这一次）：
-{{ issuedDevice.device_token }}</pre>
+      <section v-if="isAdmin" class="card">
+        <h2>管理员 · 邀请码</h2>
+        <p class="sub">邀请码一次性使用，默认 30 天过期。</p>
+        <button class="btn spaced" :disabled="settingsBusy" @click="generateInvite">{{ settingsBusy ? '处理中…' : '生成邀请码' }}</button>
+        <pre v-if="inviteResult" class="result">邀请码（仅显示这一次）：
+{{ inviteResult.code }}
+
+有效期至：{{ inviteResult.expires_at }}</pre>
       </section>
     </section>
   </main>
 
   <main v-else>
     <div class="login">
-      <h2>用量面板</h2>
-      <p>{{ authMode === 'signup' ? '使用一次性邀请码注册。' : '用账号登录，密码只用来换一次令牌。' }}</p>
-      <div class="segments">
-        <button :class="{ on: authMode === 'signin' }" @click="authMode = 'signin'">登录</button>
-        <button :class="{ on: authMode === 'signup' }" @click="authMode = 'signup'">注册</button>
-      </div>
-      <div v-if="authMode === 'signup'">
+      <h2>{{ authMode === 'signup' ? '注册' : '登录' }}</h2>
+      <p>{{ authMode === 'signup' ? '用一次性邀请码创建账号。' : '用账号登录，密码只用于登录验证。' }}</p>
+      <div v-if="authMode === 'signup'" class="field">
         <label for="inviteCode">邀请码</label>
         <input id="inviteCode" v-model="inviteCode" autocomplete="off" placeholder="输入一次性邀请码" />
+      </div>
+      <div v-if="authMode === 'signup'" class="field">
         <label for="displayNameSignup">显示名称</label>
         <input id="displayNameSignup" v-model="displayName" maxlength="80" placeholder="例如：家里用户" />
       </div>
-      <div>
+      <div class="field">
         <label for="email">邮箱</label>
         <input id="email" v-model="email" type="email" inputmode="email" autocomplete="username" placeholder="you@example.com" />
       </div>
-      <div>
+      <div class="field">
         <label for="password">密码</label>
         <input id="password" v-model="password" type="password" autocomplete="current-password" />
       </div>
-      <div class="error">{{ error }}</div>
+      <div class="error" v-if="error">{{ error }}</div>
       <button class="primary" :disabled="busy" @click="submitAuth">{{ busy ? '处理中…' : (authMode === 'signup' ? '注册并登录' : '登录') }}</button>
+      <button class="text-btn login-switch" @click="authMode = authMode === 'signup' ? 'signin' : 'signup'">{{ authMode === 'signup' ? '已有账号？去登录' : '还没有账号？用邀请码注册' }}</button>
     </div>
   </main>
 
@@ -431,6 +537,9 @@ createApp({
       inviteResult: null,
       newDeviceName: '',
       issuedDevice: null,
+      projectUrl: SUPABASE,
+      verifyingDevice: '',
+      deviceChecks: {},
       actions: [
         { key: 'chatgpt', label: '打开 ChatGPT' },
         { key: 'ccswitch', label: '打开 CC Switch' },
@@ -453,7 +562,38 @@ createApp({
     todayChangeText() { return this.changeText(this.todayCost, this.yesterdayCost); },
     todayChangeClass() { return this.changeClass(this.todayCost, this.yesterdayCost); },
     tokenChangeText() { return this.changeText(this.todayTokens, this.yesterdayTokens); },
-    tokenChangeClass() { return this.changeClass(this.todayTokens, this.yesterdayTokens); }
+    tokenChangeClass() { return this.changeClass(this.todayTokens, this.yesterdayTokens); },
+    changePct() {
+      const before = this.yesterdayCost;
+      if (!before) return null;
+      return Math.round((this.todayCost / before - 1) * 100);
+    },
+    headline() {
+      if (this.status === '正在同步…') return '正在读取用量…';
+      if (!this.rows.length) return '还没有数据。启动电脑上的后台程序后，这里会自动出现。';
+      let text = `今天 ¥${this.money(this.todayCny)}`;
+      const pct = this.changePct;
+      if (pct === null) text += '，昨天没有可比的用量';
+      else if (pct === 0) text += '，和昨天持平';
+      else if (pct > 0) text += `，比昨天多 ${pct}%`;
+      else text += `，比昨天少 ${-pct}%`;
+      if (this.limitCny > 0) text += this.isOverLimit ? `，已经超过你设的 ¥${this.limitCny} 提醒线` : `，在你设的 ¥${this.limitCny} 以内`;
+      return text + '。';
+    },
+    pageTitle() { return { usage: '用量', task: '任务', chat: '对话', settings: '设置' }[this.tab] || '用量面板'; },
+    primaryDevice() {
+      const list = [...this.devices].sort((a, b) => (Date.parse(b.last_seen || '') || 0) - (Date.parse(a.last_seen || '') || 0));
+      return list.find(device => !device.revoked_at) || list[0] || null;
+    },
+    otherDevices() { const primary = this.primaryDevice; return this.devices.filter(device => device !== primary); },
+    sessionDeviceName() {
+      const device = this.sessionDevices.find(item => item.id === this.sessionDevice);
+      return device ? (device.name || device.id) : '';
+    },
+    primaryDeviceTitle() {
+      if (!this.primaryDevice) return '电脑';
+      return this.deviceBadgeClass(this.primaryDevice) === 'ok' ? '最近在线的电脑' : '最近上报的电脑';
+    }
   },
 
   watch: {
@@ -471,9 +611,41 @@ createApp({
 
   methods: {
     ...PhoneSessions.methods,
+    formatDeviceLastSeen(value) {
+      if (!value) return '还没收到过消息';
+      const time = new Date(value);
+      if (!Number.isFinite(time.getTime())) return '上报时间不可用';
+      const parts = new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).formatToParts(time);
+      const fields = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+      return `最后上报 ${fields.month} 月 ${fields.day} 日 ${fields.hour}:${fields.minute}（北京时间）`;
+    },
+    stateOf(text) {
+      if (!text) return '';
+      if (/(失败|超时|不可|无法|未收到|不确定|过期|不符|未通过|拒绝)/.test(text)) return 'fail';
+      if (/(完成|通过|已保存|已读取|已创建|已取消|已停用)/.test(text)) return 'ok';
+      return 'pending';
+    },
+    deviceBadgeClass(device) {
+      if (!device || device.revoked_at) return 'pending';
+      const age = Date.now() - Date.parse(device.last_seen || '');
+      return Number.isFinite(age) && age >= 0 && age <= 10 * 60000 ? 'ok' : 'pending';
+    },
+    deviceBadgeText(device) {
+      if (!device) return '';
+      if (device.revoked_at) return '已停用';
+      return this.deviceBadgeClass(device) === 'ok' ? '在线' : '离线';
+    },
+    sessionTitle(id) {
+      const row = this.sessionRows.find(item => item.sourceThreadId === id);
+      return row?.name || '已选会话';
+    },
     switchTab(name) {
       this.tab = name;
       if (name === 'usage') { this.$nextTick(() => this.draw()); }
+      if (name === 'task') { this.loadSessionDevices(); }
       if (name === 'chat') { this.loadCatalog(); }
       if (name === 'settings') { this.loadSettings(); }
     },
@@ -594,25 +766,77 @@ createApp({
 
     async bindDevice() {
       const name = this.newDeviceName.trim();
-      if (!name) { this.settingsStatus = '请先填写设备名称。'; return; }
+      if (!name) { this.settingsStatus = '请先填写电脑名称。'; return; }
       this.settingsBusy = true; this.issuedDevice = null; this.settingsStatus = '';
-      try { this.issuedDevice = await this.accountRequest({ operation: 'bind_device', name }); this.newDeviceName = ''; this.settingsStatus = '设备已绑定；请立即保存令牌并配置 UsageAgent。'; await this.loadSettings(); }
+      try { this.issuedDevice = await this.accountRequest({ operation: 'bind_device', name }); this.newDeviceName = ''; this.settingsStatus = '电脑已添加；请立即保存安装口令并配置后台程序。'; await this.loadSettings(); }
       catch (exception) { this.settingsStatus = exception.message; }
       finally { this.settingsBusy = false; }
     },
 
     async issueToken(device) {
       this.settingsBusy = true; this.issuedDevice = null; this.settingsStatus = '';
-      try { const data = await this.accountRequest({ operation: 'issue_device_token', device_id: device.id }); this.issuedDevice = data; this.settingsStatus = '新令牌只显示这一次，请立即更新 UsageAgent 配置。'; await this.loadSettings(); }
+      try { const data = await this.accountRequest({ operation: 'issue_device_token', device_id: device.id }); this.issuedDevice = data; this.settingsStatus = '新的安装口令只显示这一次，请立即更新电脑上的后台程序配置。'; await this.loadSettings(); }
       catch (exception) { this.settingsStatus = exception.message; }
       finally { this.settingsBusy = false; }
     },
 
+    async verifyInstallation(device) {
+      const epoch = this.sessionEpoch;
+      const owner = this.userId();
+      if (!owner || device.revoked_at || this.verifyingDevice) return;
+      this.verifyingDevice = device.id;
+      let commandDeadline = null;
+      const setStatus = (message) => { if (epoch === this.sessionEpoch) this.deviceChecks[device.id] = message; };
+      const read = async (path, options = {}) => {
+        if (epoch !== this.sessionEpoch) throw new Error('登录状态已变化，请重新验收');
+        const controller = new AbortController();
+        const timeout = commandDeadline ? Math.max(1, Math.min(15000, commandDeadline - Date.now())) : 15000;
+        const timer = setTimeout(() => controller.abort(), timeout);
+        try {
+          const response = await fetch(`${SUPABASE}/rest/v1/${path}`, { ...options, signal: controller.signal, headers: { ...this.headers(), ...(options.headers || {}) } });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || `验收请求失败 (${response.status})`);
+          if (epoch !== this.sessionEpoch) throw new Error('登录状态已变化，请重新验收');
+          return data;
+        } catch (exception) {
+          if (exception.name === 'AbortError') throw new Error('验收请求超时，请检查网络和 Agent 后重试');
+          throw exception;
+        } finally { clearTimeout(timer); }
+      };
+      try {
+        setStatus('正在检查此设备的心跳…');
+        const filter = `id=eq.${encodeURIComponent(device.id)}&owner=eq.${encodeURIComponent(owner)}`;
+        const rows = await read(`devices?${filter}&select=id,last_seen,revoked_at`);
+        const age = Date.now() - Date.parse(rows[0]?.last_seen || '');
+        if (!rows.length || rows[0].revoked_at || !Number.isFinite(age) || age < -60000 || age > 10 * 60000) throw new Error('心跳未通过：请启动托盘 Agent，点击“立即同步”后重试');
+        setStatus('心跳通过，正在检查用量并等待 ping 回执…');
+        const samples = await read(`usage_samples?device_id=eq.${encodeURIComponent(device.id)}&owner=eq.${encodeURIComponent(owner)}&select=input_tokens,output_tokens,cache_read_tokens,cache_write_tokens&or=(input_tokens.gt.0,output_tokens.gt.0,cache_read_tokens.gt.0,cache_write_tokens.gt.0)&limit=1`);
+        const created = await read('commands', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ owner, device_id: device.id, action: 'ping', payload: {} }) });
+        if (!created[0]?.id) throw new Error('ping 未能写入');
+        commandDeadline = Date.now() + 45000;
+        let pong = false;
+        for (let i = 0; i < 45 && Date.now() < commandDeadline; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const result = await read(`commands?id=eq.${encodeURIComponent(created[0].id)}&device_id=eq.${encodeURIComponent(device.id)}&owner=eq.${encodeURIComponent(owner)}&select=status,result`);
+          if (result[0]?.status === 'failed') throw new Error('ping 返回失败，请检查 Agent');
+          if (result[0]?.status === 'done') {
+            if (result[0].result !== 'pong') throw new Error('ping 回执不符，请检查 Agent');
+            pong = true; break;
+          }
+        }
+        if (!pong) throw new Error('ping 等待超时，请确认 Agent 在线后重试');
+        const hasUsage = samples.some(row => ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens'].some(key => Number(row[key]) > 0));
+        setStatus(hasUsage ? '验收通过：最近心跳、真实用量、ping → done / pong。' : '心跳、ping → done / pong 已通过；用量待验证：先正常使用 AI 客户端，再立即同步并重试。');
+      } catch (exception) { setStatus(exception.message); }
+      finally { if (epoch === this.sessionEpoch) this.verifyingDevice = ''; }
+    },
+
     async revokeDevice(device) {
-      if (!confirm(`确定吊销设备 ${device.name || device.id}？`)) return;
+      if (!confirm(`确定停用${device.name ? '「' + device.name + '」' : ''}？停用后不再上报，已有用量保留。`)) return;
       this.settingsBusy = true; this.settingsStatus = '';
       if (this.issuedDevice?.device_id === device.id) this.issuedDevice = null;
-      try { await this.accountRequest({ operation: 'revoke_device', device_id: device.id }); this.settingsStatus = '设备已吊销'; await this.loadSettings(); }
+      delete this.deviceChecks[device.id];
+      try { await this.accountRequest({ operation: 'revoke_device', device_id: device.id }); this.settingsStatus = '电脑已停用'; await this.loadSettings(); }
       catch (exception) { this.settingsStatus = exception.message; }
       finally { this.settingsBusy = false; }
     },
@@ -676,38 +900,31 @@ createApp({
 
       const days = [];
       for (let i = this.days - 1; i >= 0; i--) days.push(this.dayString(i));
-      const values = days.map(day => this.rows.filter(r => r.day === day).reduce((t, r) => t + (r.priced ? Number(r.cost_usd) : 0), 0));
+      const values = days.map(day => this.rows.filter(r => r.day === day).reduce((t, r) => t + (r.priced ? Number(r.cost_usd) : 0), 0) * this.rate);
 
       const style = getComputedStyle(document.body);
-      const accent = style.getPropertyValue('--accent').trim() || '#4f7cff';
-      const line = style.getPropertyValue('--line').trim() || '#e5e7eb';
-      const muted = style.getPropertyValue('--muted').trim() || '#6b7280';
+      const ink = style.getPropertyValue('--text').trim() || '#09090b';
+      const line = style.getPropertyValue('--line').trim() || '#e4e4e7';
+      const muted = style.getPropertyValue('--muted').trim() || '#71717a';
       const max = Math.max(0.01, ...values), pad = 26;
       const x = i => pad + (i * (width - pad * 2)) / Math.max(1, days.length - 1);
       const y = v => height - 22 - (v / max) * (height - 44);
 
       ctx.strokeStyle = line; ctx.lineWidth = 1;
-      for (let i = 0; i <= 2; i++) { const gy = 10 + (i * (height - 40)) / 2; ctx.beginPath(); ctx.moveTo(pad, gy); ctx.lineTo(width - pad, gy); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(pad, height - 22); ctx.lineTo(width - pad, height - 22); ctx.stroke();
 
       if (values.some(v => v > 0)) {
-        const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, accent + '55'); gradient.addColorStop(1, accent + '00');
-        ctx.beginPath(); ctx.moveTo(x(0), y(values[0]));
-        values.forEach((v, i) => ctx.lineTo(x(i), y(v)));
-        ctx.lineTo(x(values.length - 1), height - 22); ctx.lineTo(x(0), height - 22); ctx.closePath();
-        ctx.fillStyle = gradient; ctx.fill();
-
         ctx.beginPath();
         values.forEach((v, i) => (i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v))));
-        ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+        ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
 
-        ctx.fillStyle = accent;
+        ctx.fillStyle = ink;
         ctx.beginPath(); ctx.arc(x(values.length - 1), y(values[values.length - 1]), 3, 0, Math.PI * 2); ctx.fill();
       }
 
-      ctx.fillStyle = muted; ctx.font = '11px -apple-system, sans-serif';
+      ctx.fillStyle = muted; ctx.font = '12px -apple-system, sans-serif';
       ctx.textAlign = 'left'; ctx.fillText(days[0].slice(5), pad, height - 6);
-      ctx.textAlign = 'right'; ctx.fillText('$' + max.toFixed(2), width - pad, 12);
+      ctx.textAlign = 'right'; ctx.fillText('¥' + max.toFixed(2), width - pad, 12);
     },
 
     userId() {
@@ -719,7 +936,7 @@ createApp({
 
     async deviceId() {
       const devices = await (await fetch(`${SUPABASE}/rest/v1/devices?select=id&revoked_at=is.null&order=last_seen.desc&limit=1`, { headers: this.headers() })).json();
-      if (!devices.length) throw new Error('还没有设备上报：先让家里的 agent 跑一次。');
+      if (!devices.length) throw new Error('还没有电脑报过到。启动后台程序后会自动出现。');
       return devices[0].id;
     },
 
@@ -737,10 +954,10 @@ createApp({
       finally { if (epoch === this.sessionEpoch) this.busy = false; }
     },
 
-    async sendCommand(action, payload) {
+    async sendCommand(action, payload, target) {
       const owner = this.userId();
       if (!owner) throw new Error('登录信息里没有用户 id');
-      const device = await this.deviceId();
+      const device = target || await this.deviceId();
       const created = await (await fetch(`${SUPABASE}/rest/v1/commands`, {
         method: 'POST',
         headers: { ...this.headers(), Prefer: 'return=representation' },
@@ -764,10 +981,11 @@ createApp({
     async sendTask() {
       const epoch = this.sessionEpoch;
       const prompt = this.taskPrompt.trim();
+      if (!this.sessionDevice) { this.taskStatus = '先选择一台电脑'; return; }
       if (!prompt) { this.taskStatus = '先写任务内容'; return; }
       this.taskBusy = true; this.taskResult = ''; this.taskStatus = '已发送，等待电脑执行…';
       try {
-        const id = await this.sendCommand('codex_task', { prompt, cwd: this.taskCwd });
+        const id = await this.sendCommand('codex_task', { prompt, cwd: this.taskCwd }, this.sessionDevice);
         if (epoch !== this.sessionEpoch) return;
         for (let i = 0; i < 300; i++) {
           await new Promise(r => setTimeout(r, 2000));
