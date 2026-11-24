@@ -142,6 +142,16 @@
   input:focus, textarea:focus, select:focus { outline: 2px solid var(--text); outline-offset: -1px; }
   .error { color: var(--danger); font-size: 13px; }
   pre.result { margin: var(--s3) 0 0; padding: var(--s3); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-control); font: 12px/1.6 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+  .session-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); padding: 0; margin: 0 0 var(--s4); list-style: none; }
+  .session-steps li { min-width: 0; padding-top: var(--s2); border-top: 2px solid var(--line); color: var(--muted); font-size: 12px; }
+  .session-steps li.current { border-color: var(--text); color: var(--text); font-weight: 600; }
+  .session-steps li.done { border-color: var(--line-strong); color: var(--text); }
+  .session-setup { padding: 0 var(--s3); border: 1px solid var(--line); border-radius: var(--r-control); }
+  .session-setup summary { display: list-item; align-content: center; min-height: 44px; cursor: pointer; color: var(--text); }
+  .session-setup ol { padding-inline-start: var(--s4); font-size: 13px; overflow-wrap: anywhere; }
+  .session-setup li + li { margin-top: var(--s2); }
+  .session-setup code { overflow-wrap: anywhere; }
+  .session-steps ~ section h3 { margin: 0 0 var(--s2); font-size: 16px; }
   .session-meta { margin: 0 0 var(--s2); font-size: 12px; color: var(--muted); line-height: 1.7; overflow-wrap: anywhere; }
   .session-choice { display: block; width: 100%; min-height: 44px; text-align: left; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-control); padding: var(--s3); margin-top: var(--s2); font-family: inherit; }
   .session-choice.on { border-color: var(--text); }
@@ -264,24 +274,104 @@
     </section>
 
     <section v-show="tab === 'task'" class="page">
-      <p class="lede">把任务交给电脑上的 Codex，任务在电脑上执行，结果回到这里。</p>
+      <section class="card" aria-labelledby="session-flow-heading">
+        <div class="card-head">
+          <h2 id="session-flow-heading">从电脑上的会话派生任务</h2>
+          <span class="sub">{{ sessionStep }} / {{ sessionSteps.length }}</span>
+        </div>
+        <ol class="session-steps" aria-label="手机会话进度">
+          <li v-for="(label, index) in sessionSteps" :key="label" :class="{ current: sessionStep === index + 1, done: sessionStep > index + 1 }" :aria-current="sessionStep === index + 1 ? 'step' : null">
+            <span>{{ label }}</span>
+          </li>
+        </ol>
+        <p v-if="sessionDeviceName && sessionStep !== 1" class="hint">当前电脑 · {{ sessionDeviceName }}</p>
 
-      <section class="card">
-        <h2>交给哪台电脑</h2>
-        <div class="field">
-          <label for="task-device">电脑</label>
-          <select id="task-device" v-model="sessionDevice" :disabled="sessionBusy || taskBusy" @change="resetPhoneSessions()">
-            <option value="">请选择电脑</option><option v-for="d in sessionDevices" :key="d.id" :value="d.id">{{ d.name || d.id }} · {{ formatDeviceLastSeen(d.last_seen) }}</option>
-          </select>
+        <section v-if="sessionStep === 1" aria-label="准备电脑">
+          <h3>先让手机连到电脑</h3>
+          <p class="hint">首次使用时，在电脑上运行 UsageAgent、配置 Codex 路径并开启手机会话。已开启的电脑可以直接选择。</p>
+          <div class="field">
+            <label for="task-device">这次用哪台电脑</label>
+            <select id="task-device" v-model="sessionDevice" :disabled="sessionBusy || taskBusy" @change="resetPhoneSessions()">
+              <option value="">请选择电脑</option>
+              <option v-for="d in sessionDevices" :key="d.id" :value="d.id">{{ d.name || d.id }} · {{ formatDeviceLastSeen(d.last_seen) }}</option>
+            </select>
+          </div>
+          <div class="actions spaced">
+            <button class="btn" :disabled="sessionBusy || taskBusy" @click="loadSessionDevices">刷新电脑列表</button>
+            <button v-if="!sessionDevices.length && !sessionBusy" class="text-btn" @click="switchTab('settings')">去设置添加电脑</button>
+          </div>
+          <details class="session-setup spaced" :key="sessionSetupBlocked" open>
+            <summary>电脑端怎么配置？</summary>
+            <ol>
+              <li>打开这台电脑的 UsageAgent 配置文件 <code>data/config.json</code>。</li>
+              <li>在 <code>localCodexExe</code> 填本机 Codex 程序的完整路径。若使用自定义 Codex 数据目录，也填 <code>localCodexHome</code>。</li>
+              <li>将 <code>mobileSessionsEnabled</code> 设为 <code>true</code>，保存并重启 UsageAgent。</li>
+            </ol>
+            <p class="sub">保存前请确认这是要从手机访问的电脑。重启后回到这里，选好电脑再检查连接。</p>
+          </details>
+          <button class="primary" :disabled="sessionBusy || taskBusy || !sessionDevice" @click="listPhoneSessions(false)">检查连接并读取会话列表</button>
+        </section>
+
+        <section v-else-if="sessionStep === 2" aria-label="选会话">
+          <h3>选一条要参考的会话</h3>
+          <p class="hint">点选后再打开预览。预览只显示有限摘录，完整历史保存在电脑上。</p>
+          <p v-if="!sessionRows.length" class="empty">这页没有可用会话。可刷新列表，或到电脑确认会话保存在当前 Codex 数据目录。</p>
+          <button v-for="s in sessionRows" :key="s.sourceThreadId" class="session-choice" :class="{ on: sessionSelected === s.sourceThreadId }" :aria-pressed="sessionSelected === s.sourceThreadId" :disabled="sessionBusy || sessionCanRecover" @click="selectPhoneSession(s.sourceThreadId)">
+            <span class="choice-name">{{ s.name || '未命名会话' }}</span>
+            <span class="choice-meta">{{ s.cwd }}</span>
+          </button>
+          <button class="primary" :disabled="sessionBusy || !sessionSelected || sessionCanRecover" @click="previewPhoneSession">打开所选会话的预览</button>
+          <div class="actions spaced">
+            <button class="btn" :disabled="sessionBusy || sessionCanRecover" @click="listPhoneSessions(false)">刷新会话列表</button>
+            <button v-if="sessionCursor" class="btn" :disabled="sessionBusy || sessionCanRecover" @click="listPhoneSessions(true)">下一页</button>
+          </div>
+        </section>
+
+        <section v-else-if="sessionStep === 3" aria-label="确认草稿">
+          <h3>确认来源和工作目录</h3>
+          <p class="session-meta">来源会话 · {{ sessionTitle(sessionPreview.sourceThreadId) }}<br>已完成 {{ sessionPreview.turnCount }} 个回合</p>
+          <pre class="result">{{ sessionPreview.excerpt || '这条会话没有可展示的文字摘录。' }}</pre>
+          <p class="sub spaced">草稿会建立独立新会话。创建草稿这一步只在电脑上完成。执行时会继承完整历史前缀、工具记录和可能的隐藏上下文。</p>
+          <div class="field">
+            <label for="session-cwd">工作目录（须在电脑的允许目录内）</label>
+            <input id="session-cwd" v-model="sessionCwd" :disabled="sessionBusy" @input="phoneCwdChanged" />
+          </div>
+          <label class="session-consent"><input type="checkbox" v-model="sessionCwdConsent" :disabled="sessionBusy" />我已检查目录。新会话可能共用这里的文件，任务按只读权限执行。</label>
+          <button class="primary" :disabled="sessionBusy || !sessionCwdConsent || !sessionCwd.trim() || sessionCanRecover" @click="preparePhoneSession">创建派生草稿</button>
+          <button class="text-btn" :disabled="sessionBusy" @click="selectPhoneSession(sessionSelected)">返回会话列表</button>
+        </section>
+
+        <section v-else aria-label="执行与结果">
+          <template v-if="sessionDraft?.state === 'draft' && !sessionSubmitted && !sessionCanRecover">
+            <h3>写下要执行的新任务</h3>
+            <p class="session-meta">来源会话 · {{ sessionTitle(sessionDraft.sourceThreadId) }}<br>工作目录 · {{ sessionDraft.cwd }}<br>供应商 · {{ sessionDraft.provider || '—' }}<br>模型 · {{ sessionDraft.model || '—' }}<br>权限 · 只读</p>
+            <div class="field">
+              <label for="session-task">新任务</label>
+              <textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy" placeholder="例如：根据这段讨论，列出待确认的三个问题。"></textarea>
+            </div>
+            <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy" />我已核对电脑上配置的供应商地址，同意把继承的历史、工具记录、可能的隐藏上下文和这次任务发给该供应商。API Key 留在电脑。最终回复会临时回传给当前账号。</label>
+            <button class="primary" :disabled="sessionBusy || !sessionContextConsent || !sessionTask.trim()" @click="executePhoneSession">确认并执行一次</button>
+          </template>
+          <template v-else>
+            <h3>{{ sessionFinalReply ? '最终回复' : '查看这次请求的结果' }}</h3>
+            <pre v-if="sessionFinalReply" class="result" aria-label="该次最终助手回复">{{ sessionFinalReply }}</pre>
+            <p v-if="sessionFinalReply && sessionResultExpires" class="sub spaced">有效期至 {{ formatSessionResultExpiry(sessionResultExpires) }}。到期后正文会清除。</p>
+            <button v-if="sessionResultRequest || sessionCanRecover" class="primary" :disabled="sessionBusy" @click="checkPhoneSession">查询结果</button>
+            <p class="sub spaced">查询只读取已有结果。断线后再次提交可能重复执行，请先查询。</p>
+          </template>
+        </section>
+
+        <div v-if="sessionStatus" class="status" :class="sessionSetupBlocked ? 'fail' : stateOf(sessionStatus)" role="status" aria-live="polite">{{ sessionStatus }}</div>
+        <div v-if="sessionStep !== 1 && (sessionCanChangeDevice || sessionDraft || sessionCanRecover || sessionResultRequest)" class="actions spaced">
+          <button v-if="sessionStep === 4 && (sessionDraft?.state === 'draft' || sessionCanRecover || (sessionBusy && sessionSubmitted))" class="btn" :disabled="sessionCancelling" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消请求' }}</button>
+          <button v-if="sessionStep === 4 && sessionCanChangeDevice && sessionListReady" class="btn" @click="listPhoneSessions(false)">回到会话列表</button>
+          <button v-if="sessionCanChangeDevice" class="text-btn" @click="resetPhoneSessions()">返回电脑选择</button>
         </div>
-        <div class="actions spaced">
-          <button class="btn" :disabled="sessionBusy || taskBusy" @click="loadSessionDevices">读取电脑列表</button>
-        </div>
-        <p class="sub spaced">没选电脑时不会派发任何任务。历史和 API Key 留在电脑。</p>
       </section>
 
-      <section class="card">
-        <h2>快速任务</h2>
+      <details class="card">
+        <summary>快速任务</summary>
+        <p class="hint">直接把新任务交给已选电脑。此入口使用单独的任务流程。</p>
         <div class="field">
           <label for="taskPrompt">任务内容</label>
           <textarea id="taskPrompt" v-model="taskPrompt" placeholder="例如：找出这个项目里所有 TODO 并整理成清单"></textarea>
@@ -292,56 +382,11 @@
             <option v-for="root in taskRoots" :key="root" :value="root">{{ root }}</option>
           </select>
         </div>
-        <button class="primary" :disabled="taskBusy || !sessionDevice" @click="sendTask">{{ taskBusy ? '执行中…' : '发送任务' }}</button>
+        <button class="btn block" :disabled="taskBusy || !sessionDevice" @click="sendTask">{{ taskBusy ? '执行中…' : '发送任务' }}</button>
         <div class="status pending" v-if="!sessionDevice">先在上面选择一台电脑。</div>
         <div class="status" v-else-if="taskStatus" :class="stateOf(taskStatus)">{{ taskStatus }}</div>
         <pre v-if="taskResult" class="result">{{ taskResult }}</pre>
-      </section>
-
-      <section class="card">
-        <h2>从会话派生（只读）</h2>
-        <p class="sub">使用上方选择的电脑{{ sessionDevice ? '：' + sessionDeviceName : '（尚未选择）' }}。流程依次是列表、预览、草稿、执行。</p>
-        <div class="actions">
-          <button class="btn" :disabled="sessionBusy || !sessionDevice || sessionCanRecover" @click="listPhoneSessions(false)">读取会话列表</button>
-        </div>
-        <button v-for="s in sessionRows" :key="s.sourceThreadId" class="session-choice" :class="{ on: sessionSelected === s.sourceThreadId }" :disabled="sessionBusy || sessionCanRecover" @click="selectPhoneSession(s.sourceThreadId)">
-          <span class="choice-name">{{ s.name }}</span>
-          <span class="choice-meta">{{ s.cwd }}</span>
-          <span class="choice-meta">模型 {{ s.model || '—' }} · 供应商 {{ s.provider || '—' }}</span>
-        </button>
-        <div class="actions spaced">
-          <button class="btn" :disabled="sessionBusy || !sessionSelected || sessionCanRecover" @click="previewPhoneSession">读取预览</button>
-          <button class="btn" :disabled="sessionBusy || !sessionCursor || sessionCanRecover" @click="listPhoneSessions(true)">下一页</button>
-        </div>
-        <section v-if="sessionPreview" class="spaced">
-          <p class="session-meta">来源会话：{{ sessionTitle(sessionPreview.sourceThreadId) }}<br>已完成回合：{{ sessionPreview.turnCount }}</p>
-          <pre class="result">{{ sessionPreview.excerpt || '没有可展示的文字摘录。' }}</pre>
-          <p class="sub">这是有限脱敏摘录，工具输出未上传；派生会继承完整前缀、工具记录及可能的隐藏上下文，不等于只发送摘录。</p>
-          <div class="field">
-            <label for="session-cwd">派生工作目录（在电脑白名单中校验）</label>
-            <input id="session-cwd" v-model="sessionCwd" :disabled="sessionBusy || sessionSubmitted" @input="phoneCwdChanged" />
-          </div>
-          <label class="session-consent"><input type="checkbox" v-model="sessionCwdConsent" :disabled="sessionBusy" />我已核对目录。新会话不代表文件隔离，可能共用同一工作目录；本次请求只读。</label>
-          <button class="btn block" :disabled="sessionBusy || !sessionCwdConsent || !sessionCwd.trim() || sessionCanRecover || !!sessionDraft" @click="preparePhoneSession">创建派生草稿</button>
-        </section>
-        <section v-if="sessionDraft" class="spaced">
-          <p class="session-meta">来源会话：{{ sessionTitle(sessionDraft.sourceThreadId) }}<br>新会话：独立新会话<br>目录：{{ sessionDraft.cwd }}<br>模型：{{ sessionDraft.model || '—' }}<br>供应商：{{ sessionDraft.provider || '—' }}<br>权限：只读</p>
-          <div class="field">
-            <label for="session-task">新任务（只读分析）</label>
-            <textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft'" placeholder="例如：只回复 FORK-SESSION-OK，不读写文件或调用工具。"></textarea>
-          </div>
-          <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft'" />我确认将完整历史前缀、工具记录及隐藏上下文和新任务发给上述本机供应商配置；API Key 留在电脑。最终助手回复将临时回传给本次派单账号。</label>
-          <button class="btn block" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft' || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="executePhoneSession">明确执行一次</button>
-        </section>
-        <div class="status" v-if="sessionStatus" :class="stateOf(sessionStatus)" role="status" aria-live="polite">{{ sessionStatus }}</div>
-        <pre v-if="sessionFinalReply" class="result" aria-label="该次最终助手回复">{{ sessionFinalReply }}</pre>
-        <p v-if="sessionResultExpires" class="sub spaced">该次结果有效期至 {{ sessionResultExpires }}。最多显示 1.6 万字符，到期正文不可读取。</p>
-        <div class="actions spaced">
-          <button class="btn" :disabled="sessionBusy || (!sessionCanRecover && !sessionDraft && !sessionResultRequest)" @click="checkPhoneSession">查询结果</button>
-          <button class="btn" :disabled="sessionCancelling || (!sessionDraft && !sessionLastRequest && !sessionResultRequest)" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消请求' }}</button>
-        </div>
-        <p class="sub spaced">断线不代表未执行；取消无法撤回已发送的模型请求。刷新只查询已有结果，不自动重发任务。浏览器只保存关联 ID，不保存任务或回复正文。</p>
-      </section>
+      </details>
     </section>
 
     <section v-show="tab === 'chat'" class="page">
@@ -586,6 +631,18 @@ createApp({
       return list.find(device => !device.revoked_at) || list[0] || null;
     },
     otherDevices() { const primary = this.primaryDevice; return this.devices.filter(device => device !== primary); },
+    sessionSteps() { return ['准备电脑', '选会话', '确认草稿', '执行与结果']; },
+    sessionStep() {
+      if (!this.sessionDevice) return 1;
+      if (this.sessionDraft || this.sessionSubmitted || this.sessionResultRequest || this.sessionCanRecover) return 4;
+      if (this.sessionSetupBlocked) return 1;
+      if (this.sessionPreview) return 3;
+      return this.sessionListReady ? 2 : 1;
+    },
+    sessionCanChangeDevice() {
+      return !this.sessionBusy && !this.taskBusy && !this.sessionCanRecover &&
+        !['draft', 'running'].includes(this.sessionDraft?.state);
+    },
     sessionDeviceName() {
       const device = this.sessionDevices.find(item => item.id === this.sessionDevice);
       return device ? (device.name || device.id) : '';
@@ -611,6 +668,10 @@ createApp({
 
   methods: {
     ...PhoneSessions.methods,
+    formatSessionResultExpiry(value) {
+      const label = this.formatDeviceLastSeen(value);
+      return label.startsWith('最后上报 ') ? label.slice('最后上报 '.length) : '页面标注的期限';
+    },
     formatDeviceLastSeen(value) {
       if (!value) return '还没收到过消息';
       const time = new Date(value);
@@ -645,7 +706,7 @@ createApp({
     switchTab(name) {
       this.tab = name;
       if (name === 'usage') { this.$nextTick(() => this.draw()); }
-      if (name === 'task') { this.loadSessionDevices(); }
+      if (name === 'task' && !this.sessionDevice) { this.loadSessionDevices(); }
       if (name === 'chat') { this.loadCatalog(); }
       if (name === 'settings') { this.loadSettings(); }
     },

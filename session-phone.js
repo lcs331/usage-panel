@@ -5,7 +5,8 @@ globalThis.PhoneSessions = {
       sessionDevices: [], sessionDevice: '', sessionRows: [], sessionCursor: null,
       sessionSelected: '', sessionPreview: null, sessionDraft: null, sessionCwd: '', sessionTask: '',
       sessionCwdConsent: false, sessionContextConsent: false, sessionBusy: false, sessionCancelling: false,
-      sessionSubmitted: false, sessionStatus: '选择电脑，再明确读取会话列表。',
+      sessionSubmitted: false, sessionListReady: false, sessionSetupBlocked: false,
+      sessionStatus: '选择电脑后，即可检查连接。',
       sessionLastRequest: '', sessionLastOperation: '', sessionCanRecover: false, sessionGeneration: 0,
       sessionResultRequest: '', sessionFinalReply: '', sessionResultExpires: '', sessionResultTruncated: false,
       sessionResultTimer: null
@@ -30,6 +31,7 @@ globalThis.PhoneSessions = {
       clearTimeout(this.sessionResultTimer); this.sessionResultTimer = null;
       this.sessionGeneration++;
       this.sessionRows = []; this.sessionCursor = null; this.sessionSelected = '';
+      this.sessionListReady = false; this.sessionSetupBlocked = false;
       this.sessionPreview = null; this.sessionDraft = null; this.sessionCwd = ''; this.sessionTask = '';
       this.sessionCwdConsent = false; this.sessionContextConsent = false;
       this.sessionSubmitted = false; this.sessionBusy = false; this.sessionCancelling = false;
@@ -38,7 +40,8 @@ globalThis.PhoneSessions = {
       this.sessionLastRequest = saved?.requestId || ''; this.sessionLastOperation = saved?.operation || '';
       this.sessionResultRequest = this.phoneRecord('nc_session_result')?.requestId || '';
       this.sessionCanRecover = !!saved;
-      this.sessionStatus = this.sessionDevice ? '已选择电脑；下一步读取会话列表。' : '选择电脑，再明确读取会话列表。';
+      this.sessionStatus = saved || this.sessionResultRequest ? '找到这台电脑的上次请求。你可以查询进度或结果。'
+        : this.sessionDevice ? '电脑已选好。点击「检查连接并读取会话列表」继续。' : '选择电脑后，即可检查连接。';
     },
     async loadSessionDevices() {
       if (this.sessionBusy) return;
@@ -51,10 +54,13 @@ globalThis.PhoneSessions = {
         if (epoch !== this.sessionEpoch) return;
         if (!Array.isArray(rows)) throw new Error('devices_unavailable');
         this.sessionDevices = rows;
-        if (!rows.some(d => d.id === this.sessionDevice)) this.sessionDevice = '';
-        this.sessionCanRecover = !!this.recoverablePhoneReceipt();
-        this.sessionResultRequest = this.phoneRecord('nc_session_result')?.requestId || '';
-        this.sessionStatus = rows.length ? (this.sessionDevice ? '已选择电脑；不会自动读取会话或正文。' : '请选择电脑；不会自动读取会话或正文。') : '还没有可用的电脑。先在设置里添加一台电脑，再启动后台程序。';
+        if (this.sessionDevice && !rows.some(device => device.id === this.sessionDevice)) {
+          this.sessionDevice = '';
+          this.resetPhoneSessions();
+          this.sessionStatus = '之前选的电脑已不在列表里。请重新选择，或去设置检查设备。';
+        } else if (!this.sessionDevice) {
+          this.sessionStatus = rows.length ? '请选择要使用的电脑。' : '还没有可用的电脑。先在设置里添加一台电脑，再启动后台程序。';
+        }
       } catch { if (epoch === this.sessionEpoch) this.sessionStatus = '设备列表未读取，请检查连接。'; }
       finally { if (epoch === this.sessionEpoch) this.sessionBusy = false; }
     },
@@ -155,7 +161,7 @@ globalThis.PhoneSessions = {
           } else if (operation === 'list') {
             this.forgetPhoneRequest(requestId);
             this.sessionCanRecover = false;
-            this.sessionStatus = '读取会话列表超时，请重新读取。';
+            this.sessionStatus = '读取会话列表超时。请在电脑上确认 UsageAgent 正在运行，再回来重试。';
           } else {
             this.sessionCanRecover = true;
             this.sessionStatus = '是否已执行尚不确定；请查询结果或取消，不能重复提交。';
@@ -173,8 +179,22 @@ globalThis.PhoneSessions = {
         disconnected: '本地连接失效；核对新会话，不能恢复提交。', unknown: '结果未知；核对新会话，不要重复提交。',
         disabled: '电脑未启用手机会话功能。', interrupted: '本次新回合已中断。' };
       this.sessionStatus = labels[reply.status] || '未知状态，请到电脑核对。';
-      if (reply.code) this.sessionStatus += ' (' + reply.code + ')';
-      if (reply.status === 'listed') { this.sessionRows = data.sessions || []; this.sessionCursor = data.nextCursor || null; }
+      if (reply.status === 'disabled' || reply.code === 'local_opt_in_required') {
+        this.sessionSetupBlocked = true;
+        this.sessionListReady = false;
+        this.sessionStatus = '已连到所选电脑，但手机会话还没开启。请在这台电脑上配置并重启 UsageAgent，再回来检查连接。';
+      } else if (operation === 'list' && reply.code === 'local_operation_refused') {
+        this.sessionSetupBlocked = true;
+        this.sessionListReady = false;
+        this.sessionStatus = '电脑收到了请求，但没能读取会话。请在电脑上核对 Codex 程序路径和会话所在目录，再回来重试。';
+      }
+      if (reply.status === 'listed') {
+        this.sessionListReady = true;
+        this.sessionSetupBlocked = false;
+        this.sessionRows = data.sessions || [];
+        this.sessionCursor = data.nextCursor || null;
+        this.sessionStatus = this.sessionRows.length ? '已连上电脑。选择一条会话，再打开预览。' : '已连上电脑，这页还没有可用会话。';
+      }
       if (reply.status === 'previewed') {
         this.sessionPreview = data; this.sessionCwd = data.cwd; this.sessionDraft = null;
         this.sessionCwdConsent = false; this.sessionContextConsent = false; this.sessionSubmitted = false;
@@ -184,7 +204,8 @@ globalThis.PhoneSessions = {
       if (operation === 'prepare' && reply.status !== 'draft') this.sessionPreview = null;
     },
     listPhoneSessions(next = false) {
-      if (this.sessionCanRecover || this.sessionBusy) return;
+      if (!this.sessionDevice || this.sessionCanRecover || this.sessionBusy) return;
+      this.sessionSetupBlocked = false;
       this.sessionPreview = null; this.sessionDraft = null; this.sessionSelected = ''; this.sessionFinalReply = '';
       this.sessionSubmitted = false; this.sessionCwdConsent = false; this.sessionContextConsent = false;
       return this.phoneSessionRequest('list', next && this.sessionCursor ? { cursor: this.sessionCursor } : {});
@@ -208,7 +229,7 @@ globalThis.PhoneSessions = {
     async readPhoneResult(seconds = 1) {
       if (this.sessionBusy) return;
       const saved = this.phoneRecord('nc_session_result');
-      if (!saved) { this.sessionStatus = '请用派单账号选择原测试电脑，再查询该次结果。'; return; }
+      if (!saved) { this.sessionStatus = '请选回发起任务的电脑，再查询结果。'; return; }
       const epoch = this.sessionEpoch, generation = this.sessionGeneration;
       this.sessionBusy = true; this.sessionFinalReply = '';
       try {
@@ -233,7 +254,7 @@ globalThis.PhoneSessions = {
                 this.sessionFinalReply = ''; this.sessionStatus = '结果已过期，正文已从页面清除。';
               }
             }, remaining);
-            this.sessionStatus = this.sessionResultTruncated ? '任务完成；回复超过 1.6 万字符，仅展示前缀。' : '任务完成，以下为该次最终助手回复。';
+            this.sessionStatus = this.sessionResultTruncated ? '任务完成。回复较长，这里只显示开头。' : '任务完成，以下为该次最终助手回复。';
           } else {
             const labels = { pending: '尚无最终回复；可稍后查询，不会再次派单。', failed: '任务失败，没有可展示的最终回复。',
               interrupted: '任务已中断，没有最终回复。', unknown: '执行结果未知，不能重复派单。',

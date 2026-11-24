@@ -1,5 +1,5 @@
 // The shell cache: the page opens offline, the data still needs the network.
-const CACHE = 'usage-panel-v8';
+const CACHE = 'usage-panel-session-flow-v1';
 const SHELL = [
   './',
   './index.html',
