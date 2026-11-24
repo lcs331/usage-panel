@@ -41,7 +41,7 @@ globalThis.PhoneSessions = {
       this.sessionResultRequest = this.phoneRecord('nc_session_result')?.requestId || '';
       this.sessionCanRecover = !!saved;
       this.sessionStatus = saved || this.sessionResultRequest ? '找到这台电脑的上次请求。你可以查询进度或结果。'
-        : this.sessionDevice ? '电脑已选好。点击「检查连接并读取会话列表」继续。' : '选择电脑后，即可检查连接。';
+        : this.sessionDevice ? '电脑已选好。点击「检查连接」继续。' : '选择电脑后，即可检查连接。';
     },
     async loadSessionDevices() {
       if (this.sessionBusy) return;
@@ -161,7 +161,7 @@ globalThis.PhoneSessions = {
           } else if (operation === 'list') {
             this.forgetPhoneRequest(requestId);
             this.sessionCanRecover = false;
-            this.sessionStatus = '读取会话列表超时。请在电脑上确认 UsageAgent 正在运行，再回来重试。';
+            this.sessionStatus = '连接超时。请确认电脑联网、用量后台程序正在运行，再点「检查连接」。';
           } else {
             this.sessionCanRecover = true;
             this.sessionStatus = '是否已执行尚不确定；请查询结果或取消，不能重复提交。';
@@ -182,11 +182,11 @@ globalThis.PhoneSessions = {
       if (reply.status === 'disabled' || reply.code === 'local_opt_in_required') {
         this.sessionSetupBlocked = true;
         this.sessionListReady = false;
-        this.sessionStatus = '已连到所选电脑，但手机会话还没开启。请在这台电脑上配置并重启 UsageAgent，再回来检查连接。';
+        this.sessionStatus = '这台电脑还没开启手机会话。把电脑配置操作单交给电脑上的 AI 工具，完成后再点「检查连接」。';
       } else if (operation === 'list' && reply.code === 'local_operation_refused') {
         this.sessionSetupBlocked = true;
         this.sessionListReady = false;
-        this.sessionStatus = '电脑收到了请求，但没能读取会话。请在电脑上核对 Codex 程序路径和会话所在目录，再回来重试。';
+        this.sessionStatus = '电脑已连上，但暂时打不开会话列表。把电脑配置操作单交给电脑上的 AI 工具检查，完成后再点「检查连接」。';
       }
       if (reply.status === 'listed') {
         this.sessionListReady = true;

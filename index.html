@@ -146,11 +146,6 @@
   .session-steps li { min-width: 0; padding-top: var(--s2); border-top: 2px solid var(--line); color: var(--muted); font-size: 12px; }
   .session-steps li.current { border-color: var(--text); color: var(--text); font-weight: 600; }
   .session-steps li.done { border-color: var(--line-strong); color: var(--text); }
-  .session-setup { padding: 0 var(--s3); border: 1px solid var(--line); border-radius: var(--r-control); }
-  .session-setup summary { display: list-item; align-content: center; min-height: 44px; cursor: pointer; color: var(--text); }
-  .session-setup ol { padding-inline-start: var(--s4); font-size: 13px; overflow-wrap: anywhere; }
-  .session-setup li + li { margin-top: var(--s2); }
-  .session-setup code { overflow-wrap: anywhere; }
   .session-steps ~ section h3 { margin: 0 0 var(--s2); font-size: 16px; }
   .session-meta { margin: 0 0 var(--s2); font-size: 12px; color: var(--muted); line-height: 1.7; overflow-wrap: anywhere; }
   .session-choice { display: block; width: 100%; min-height: 44px; text-align: left; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-control); padding: var(--s3); margin-top: var(--s2); font-family: inherit; }
@@ -287,8 +282,8 @@
         <p v-if="sessionDeviceName && sessionStep !== 1" class="hint">当前电脑 · {{ sessionDeviceName }}</p>
 
         <section v-if="sessionStep === 1" aria-label="准备电脑">
-          <h3>先让手机连到电脑</h3>
-          <p class="hint">首次使用时，在电脑上运行 UsageAgent、配置 Codex 路径并开启手机会话。已开启的电脑可以直接选择。</p>
+          <h3>选择要使用的电脑</h3>
+          <p class="hint">首次使用时，先在电脑上把配置操作单交给 AI 工具。</p>
           <div class="field">
             <label for="task-device">这次用哪台电脑</label>
             <select id="task-device" v-model="sessionDevice" :disabled="sessionBusy || taskBusy" @change="resetPhoneSessions()">
@@ -300,22 +295,16 @@
             <button class="btn" :disabled="sessionBusy || taskBusy" @click="loadSessionDevices">刷新电脑列表</button>
             <button v-if="!sessionDevices.length && !sessionBusy" class="text-btn" @click="switchTab('settings')">去设置添加电脑</button>
           </div>
-          <details class="session-setup spaced" :key="sessionSetupBlocked" open>
-            <summary>电脑端怎么配置？</summary>
-            <ol>
-              <li>打开这台电脑的 UsageAgent 配置文件 <code>data/config.json</code>。</li>
-              <li>在 <code>localCodexExe</code> 填本机 Codex 程序的完整路径。若使用自定义 Codex 数据目录，也填 <code>localCodexHome</code>。</li>
-              <li>将 <code>mobileSessionsEnabled</code> 设为 <code>true</code>，保存并重启 UsageAgent。</li>
-            </ol>
-            <p class="sub">保存前请确认这是要从手机访问的电脑。重启后回到这里，选好电脑再检查连接。</p>
-          </details>
-          <button class="primary" :disabled="sessionBusy || taskBusy || !sessionDevice" @click="listPhoneSessions(false)">检查连接并读取会话列表</button>
+          <button class="primary" :disabled="sessionBusy || taskBusy || !sessionDevice" @click="listPhoneSessions(false)">检查连接</button>
+          <div class="actions spaced">
+            <a class="text-btn" href="./computer-setup.md" download="手机会话电脑配置操作单.md">下载电脑配置操作单</a>
+          </div>
         </section>
 
         <section v-else-if="sessionStep === 2" aria-label="选会话">
           <h3>选一条要参考的会话</h3>
           <p class="hint">点选后再打开预览。预览只显示有限摘录，完整历史保存在电脑上。</p>
-          <p v-if="!sessionRows.length" class="empty">这页没有可用会话。可刷新列表，或到电脑确认会话保存在当前 Codex 数据目录。</p>
+          <p v-if="!sessionRows.length" class="empty">这页没有可选的会话。可以刷新列表，或到电脑上确认需要的会话已经保存。</p>
           <button v-for="s in sessionRows" :key="s.sourceThreadId" class="session-choice" :class="{ on: sessionSelected === s.sourceThreadId }" :aria-pressed="sessionSelected === s.sourceThreadId" :disabled="sessionBusy || sessionCanRecover" @click="selectPhoneSession(s.sourceThreadId)">
             <span class="choice-name">{{ s.name || '未命名会话' }}</span>
             <span class="choice-meta">{{ s.cwd }}</span>
@@ -432,7 +421,7 @@
         <div class="device-name">{{ primaryDevice.name || '未命名电脑' }}</div>
         <div class="sub">{{ formatDeviceLastSeen(primaryDevice.last_seen) }}</div>
         <div class="actions spaced">
-          <button class="btn" :disabled="settingsBusy || !!verifyingDevice || !!primaryDevice.revoked_at" @click="verifyInstallation(primaryDevice)">{{ verifyingDevice === primaryDevice.id ? '验收中…' : '验收安装' }}</button>
+          <button class="btn" :disabled="settingsBusy || !!verifyingDevice || !!primaryDevice.revoked_at" @click="verifyInstallation(primaryDevice)">{{ verifyingDevice === primaryDevice.id ? '检查中…' : '检查安装' }}</button>
           <button class="btn" :disabled="settingsBusy || !!verifyingDevice" @click="issueToken(primaryDevice)">重新生成口令</button>
         </div>
         <div v-if="deviceChecks[primaryDevice.id]" class="status" :class="stateOf(deviceChecks[primaryDevice.id])">{{ deviceChecks[primaryDevice.id] }}</div>
@@ -450,7 +439,7 @@
           <div class="bar-top"><span class="bar-name">{{ device.name || '未命名电脑' }}</span><span class="badge" :class="deviceBadgeClass(device)">{{ deviceBadgeText(device) }}</span></div>
           <div class="sub">{{ formatDeviceLastSeen(device.last_seen) }}</div>
           <div class="device-actions">
-            <button class="text-btn" :disabled="settingsBusy || !!verifyingDevice || !!device.revoked_at" @click="verifyInstallation(device)">验收安装</button>
+            <button class="text-btn" :disabled="settingsBusy || !!verifyingDevice || !!device.revoked_at" @click="verifyInstallation(device)">检查安装</button>
             <button class="text-btn" :disabled="settingsBusy || !!verifyingDevice" @click="issueToken(device)">{{ device.revoked_at ? '恢复并重新生成' : '重新生成口令' }}</button>
             <button v-if="!device.revoked_at" class="text-btn danger-text" :disabled="settingsBusy || !!verifyingDevice" @click="revokeDevice(device)">停用</button>
           </div>
@@ -466,14 +455,14 @@
         </div>
         <button class="primary" :disabled="settingsBusy" @click="bindDevice">{{ settingsBusy ? '处理中…' : '添加' }}</button>
         <p class="sub spaced">添加一次即可。装好后台程序后，它会自动出现在上面。</p>
-        <p class="sub">在电脑上解压管理员提供的 UsageAgent 发布包，双击 install.cmd；安装器会询问项目地址、电脑编号和安装口令。基础监控无需安装 Codex CLI。</p>
+        <p class="sub">在电脑上打开管理员提供的安装包，按提示填写安装信息。电脑编号和安装口令在添加后显示。</p>
         <pre v-if="issuedDevice" class="result">电脑编号：
 {{ issuedDevice.device_id }}
 
 安装口令（只显示这一次）：
 {{ issuedDevice.device_token }}</pre>
         <button v-if="issuedDevice" class="text-btn" @click="issuedDevice = null">已粘贴到安装器，隐藏安装信息</button>
-        <p class="sub">安装完成后点“验收安装”，检查最近心跳、真实用量和 ping 回执。零用量不会被当作已验证采集。</p>
+        <p class="sub">安装完成后点「检查安装」，确认电脑能连上网页，并查看是否已有用量记录。</p>
       </section>
 
       <section class="card">
@@ -856,38 +845,38 @@ createApp({
         try {
           const response = await fetch(`${SUPABASE}/rest/v1/${path}`, { ...options, signal: controller.signal, headers: { ...this.headers(), ...(options.headers || {}) } });
           const data = await response.json();
-          if (!response.ok) throw new Error(data.message || `验收请求失败 (${response.status})`);
+          if (!response.ok) throw new Error('安装检查失败，请确认网页已登录后重试。');
           if (epoch !== this.sessionEpoch) throw new Error('登录状态已变化，请重新验收');
           return data;
         } catch (exception) {
-          if (exception.name === 'AbortError') throw new Error('验收请求超时，请检查网络和 Agent 后重试');
+          if (exception.name === 'AbortError') throw new Error('安装检查超时，请确认电脑联网、后台程序正在运行，再重试。');
           throw exception;
         } finally { clearTimeout(timer); }
       };
       try {
-        setStatus('正在检查此设备的心跳…');
+        setStatus('正在检查电脑是否在线…');
         const filter = `id=eq.${encodeURIComponent(device.id)}&owner=eq.${encodeURIComponent(owner)}`;
         const rows = await read(`devices?${filter}&select=id,last_seen,revoked_at`);
         const age = Date.now() - Date.parse(rows[0]?.last_seen || '');
-        if (!rows.length || rows[0].revoked_at || !Number.isFinite(age) || age < -60000 || age > 10 * 60000) throw new Error('心跳未通过：请启动托盘 Agent，点击“立即同步”后重试');
-        setStatus('心跳通过，正在检查用量并等待 ping 回执…');
+        if (!rows.length || rows[0].revoked_at || !Number.isFinite(age) || age < -60000 || age > 10 * 60000) throw new Error('电脑在线检查未通过。请打开电脑上的用量后台程序，稍后重试。');
+        setStatus('正在检查电脑能否收到网页的请求，并核对用量记录…');
         const samples = await read(`usage_samples?device_id=eq.${encodeURIComponent(device.id)}&owner=eq.${encodeURIComponent(owner)}&select=input_tokens,output_tokens,cache_read_tokens,cache_write_tokens&or=(input_tokens.gt.0,output_tokens.gt.0,cache_read_tokens.gt.0,cache_write_tokens.gt.0)&limit=1`);
         const created = await read('commands', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ owner, device_id: device.id, action: 'ping', payload: {} }) });
-        if (!created[0]?.id) throw new Error('ping 未能写入');
+        if (!created[0]?.id) throw new Error('连接检查请求发送失败，请重试。');
         commandDeadline = Date.now() + 45000;
         let pong = false;
         for (let i = 0; i < 45 && Date.now() < commandDeadline; i++) {
           await new Promise(resolve => setTimeout(resolve, 1000));
           const result = await read(`commands?id=eq.${encodeURIComponent(created[0].id)}&device_id=eq.${encodeURIComponent(device.id)}&owner=eq.${encodeURIComponent(owner)}&select=status,result`);
-          if (result[0]?.status === 'failed') throw new Error('ping 返回失败，请检查 Agent');
+          if (result[0]?.status === 'failed') throw new Error('电脑未通过连接检查，请确认电脑上的用量后台程序已更新。');
           if (result[0]?.status === 'done') {
-            if (result[0].result !== 'pong') throw new Error('ping 回执不符，请检查 Agent');
+            if (result[0].result !== 'pong') throw new Error('电脑的回复与检查请求不符，请确认电脑上的用量后台程序已更新。');
             pong = true; break;
           }
         }
-        if (!pong) throw new Error('ping 等待超时，请确认 Agent 在线后重试');
+        if (!pong) throw new Error('等待电脑回复超时，请确认电脑联网、后台程序正在运行，再重试。');
         const hasUsage = samples.some(row => ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens'].some(key => Number(row[key]) > 0));
-        setStatus(hasUsage ? '验收通过：最近心跳、真实用量、ping → done / pong。' : '心跳、ping → done / pong 已通过；用量待验证：先正常使用 AI 客户端，再立即同步并重试。');
+        setStatus(hasUsage ? '安装检查通过。电脑已连通，已有用量记录。' : '电脑已连通。还没有用量记录，正常使用电脑上的 AI 工具后再查看。');
       } catch (exception) { setStatus(exception.message); }
       finally { if (epoch === this.sessionEpoch) this.verifyingDevice = ''; }
     },

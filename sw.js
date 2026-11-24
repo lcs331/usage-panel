@@ -1,10 +1,11 @@
 // The shell cache: the page opens offline, the data still needs the network.
-const CACHE = 'usage-panel-session-flow-v1';
+const CACHE = 'usage-panel-session-flow-v2';
 const SHELL = [
   './',
   './index.html',
   './vue.global.prod.js',
   './session-phone.js',
+  './computer-setup.md',
   './manifest.json',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
