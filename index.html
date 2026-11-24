@@ -102,6 +102,12 @@
   .error { color: var(--danger); font-size: 13px; min-height: 18px; }
   .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
   pre.result { margin: 10px 0 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; font-size: 13px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+  .session-flow { margin-top: 18px; border-top: 3px solid var(--accent); padding-top: 18px; }
+  .session-meta { font: 12px/1.65 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+  .session-choice { width: 100%; text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; }
+  .session-choice.on { border-color: var(--accent); outline: 1px solid var(--accent); }
+  .session-consent { display: flex; align-items: flex-start; gap: 9px; color: var(--text); font-size: 13px; padding: 8px 0; }
+  .session-consent input { width: 20px; min-height: 20px; flex: none; margin: 0; }
 
   .chat { display: grid; gap: 10px; }
   .picker { display: grid; gap: 2px; margin-bottom: 12px; }
@@ -232,6 +238,39 @@
       <button class="primary" :disabled="taskBusy" @click="sendTask">{{ taskBusy ? '执行中…' : '发送任务' }}</button>
       <div class="status">{{ taskStatus }}</div>
       <pre v-if="taskResult" class="result">{{ taskResult }}</pre>
+      <section class="session-flow" aria-labelledby="session-heading">
+        <h2 id="session-heading">从本机会话派生 · 默认只读</h2>
+        <p class="sub">列表 → 明确预览 → 独立草稿 → 确认执行。API Key、完整历史和模型调用留在电脑。完成后可在手机查看该次最终助手回复，不提供原地 resume。</p>
+        <div class="actions"><button :disabled="sessionBusy" @click="loadSessionDevices">读取我的电脑</button><button :disabled="sessionBusy || !sessionDevice || sessionCanRecover" @click="listPhoneSessions(false)">读取会话列表</button></div>
+        <label for="session-device">本次操作的电脑</label>
+        <select id="session-device" v-model="sessionDevice" :disabled="sessionBusy" @change="resetPhoneSessions()">
+          <option value="">请选择电脑</option><option v-for="d in sessionDevices" :key="d.id" :value="d.id">{{ d.name || d.id }} · {{ d.last_seen || '未上报' }}</option>
+        </select>
+        <button v-for="s in sessionRows" :key="s.sourceThreadId" class="session-choice" :class="{ on: sessionSelected === s.sourceThreadId }" :disabled="sessionBusy || sessionCanRecover" @click="selectPhoneSession(s.sourceThreadId)">
+          <strong>{{ s.name }}</strong><div class="session-meta">{{ s.sourceThreadId }}<br>{{ s.cwd }}<br>{{ s.model }} · {{ s.provider }}</div>
+        </button>
+        <div class="actions" style="margin-top:10px"><button :disabled="sessionBusy || !sessionSelected || sessionCanRecover" @click="previewPhoneSession">读取选中会话预览</button><button :disabled="sessionBusy || !sessionCursor || sessionCanRecover" @click="listPhoneSessions(true)">下一页</button></div>
+        <section v-if="sessionPreview">
+          <p class="session-meta">source_thread_id：{{ sessionPreview.sourceThreadId }}<br>已完成回合：{{ sessionPreview.turnCount }}<br>截止：{{ sessionPreview.cutoffTurnId }}</p>
+          <pre class="result">{{ sessionPreview.excerpt || '没有可展示的文字摘录。' }}</pre>
+          <p class="sub">这是有限脱敏摘录，工具输出未上传；派生继承完整前缀、工具记录及可能的隐藏上下文，不等于仅发送摘录。</p>
+          <label for="session-cwd">派生工作目录（在电脑白名单中校验）</label>
+          <input id="session-cwd" v-model="sessionCwd" :disabled="sessionBusy || sessionSubmitted" @input="phoneCwdChanged" />
+          <label class="session-consent"><input type="checkbox" v-model="sessionCwdConsent" :disabled="sessionBusy" />我已核对目录。新 thread 不代表文件隔离，可能共享同一工作目录；本次请求只读。</label>
+          <button class="primary" :disabled="sessionBusy || !sessionCwdConsent || !sessionCwd.trim() || sessionCanRecover || !!sessionDraft" @click="preparePhoneSession">创建独立派生草稿</button>
+        </section>
+        <section v-if="sessionDraft">
+          <p class="session-meta">source_thread_id：{{ sessionDraft.sourceThreadId }}<br>new_thread_id：{{ sessionDraft.newThreadId }}<br>目录：{{ sessionDraft.cwd }}<br>模型：{{ sessionDraft.model }} · {{ sessionDraft.provider }}<br>权限：{{ sessionDraft.sandbox || 'read-only' }}</p>
+          <label for="session-task">新任务（只读分析）</label><textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft'" placeholder="例如：只回复 FORK-SESSION-OK，不读写文件或调用工具。"></textarea>
+          <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft'" />我确认将完整历史前缀、工具记录及隐藏上下文和新任务发给上述本机供应商。请先在电脑上核对供应商的实际服务地址。API Key 留在电脑。最终助手回复将临时回传给本次派单账号。</label>
+          <button class="primary" :disabled="sessionBusy || sessionSubmitted || sessionDraft.state !== 'draft' || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="executePhoneSession">明确执行一次新任务</button>
+        </section>
+        <div class="status" role="status" aria-live="polite">{{ sessionStatus }}</div>
+        <pre v-if="sessionFinalReply" class="result" aria-label="该次最终助手回复">{{ sessionFinalReply }}</pre>
+        <p v-if="sessionResultExpires" class="sub">该次结果有效期至 {{ sessionResultExpires }}。最多展示 16 KiB；到期正文不可读取。</p>
+        <div class="actions" style="margin-top:10px"><button :disabled="sessionBusy || (!sessionCanRecover && !sessionDraft && !sessionResultRequest)" @click="checkPhoneSession">只查询结果 / 恢复状态</button><button :disabled="sessionCancelling || (!sessionDraft && !sessionLastRequest && !sessionResultRequest)" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消并停止本地连接' }}</button></div>
+        <p class="sub">断线不代表未执行；取消无法撤回已发送的模型请求。刷新只查询已有结果，不自动重发任务。浏览器只保存关联 ID，不保存任务或回复正文。</p>
+      </section>
     </section>
 
     <section v-show="tab === 'chat'" class="card">
@@ -342,6 +381,7 @@ DeviceToken（只显示这一次）：
 </div>
 
 <script src="vue.global.prod.js"></script>
+<script src="session-phone.js"></script>
 <script>
 const SUPABASE = 'https://jjxkggytywtttzckptfs.supabase.co';
 const KEY = 'sb_publishable_0bNIG826A1kt5CMU09Ying_sYDv4vZd';
@@ -350,6 +390,7 @@ const { createApp } = Vue;
 createApp({
   data() {
     return {
+      ...PhoneSessions.data(),
       email: localStorage.getItem('nc_email') || '',
       password: '',
       authMode: 'signin',
@@ -429,6 +470,7 @@ createApp({
   },
 
   methods: {
+    ...PhoneSessions.methods,
     switchTab(name) {
       this.tab = name;
       if (name === 'usage') { this.$nextTick(() => this.draw()); }
@@ -505,6 +547,9 @@ createApp({
 
     signOut() {
       this.sessionEpoch += 1;
+      if (this.resetPhoneSessions) this.resetPhoneSessions();
+      localStorage.removeItem('nc_session_receipt');
+      localStorage.removeItem('nc_session_result');
       ['nc_refresh', 'nc_email', 'nc_display_name', 'nc_route', 'nc_model', 'nc_cwd', 'nc_limit'].forEach(key => localStorage.removeItem(key));
       this.accessToken = null; this.signedIn = false;
       window.location.reload();
