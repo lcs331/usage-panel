@@ -132,7 +132,7 @@ globalThis.PhoneSessions = {
     async phoneSessionRequest(operation, options = {}) {
       if (this.sessionBusy || !this.sessionDevice || (this.sessionCanRecover && operation !== 'status')) return;
       if (operation === 'execute' && this.sessionSubmitted) return;
-      if (['list', 'preview', 'prepare'].includes(operation)) this.clearPhoneResult();
+      if (operation === 'prepare') this.clearPhoneResult();
       const epoch = this.sessionEpoch, generation = this.sessionGeneration, device = this.sessionDevice;
       const requestId = crypto.randomUUID();
       const payload = { requestId, operation, relayVersion: 1, expiresAt: new Date(Date.now() + 120000).toISOString(), ...options };
@@ -205,6 +205,7 @@ globalThis.PhoneSessions = {
     },
     listPhoneSessions(next = false) {
       if (!this.sessionDevice || this.sessionCanRecover || this.sessionBusy) return;
+      this.clearPhoneResult();
       this.sessionSetupBlocked = false;
       this.sessionPreview = null; this.sessionDraft = null; this.sessionSelected = ''; this.sessionFinalReply = '';
       this.sessionSubmitted = false; this.sessionCwdConsent = false; this.sessionContextConsent = false;
@@ -333,6 +334,164 @@ globalThis.PhoneSessions = {
         }
       } finally {
         if (epoch === this.sessionEpoch && generation === this.sessionGeneration) { this.sessionBusy = false; this.sessionCancelling = false; }
+      }
+    }
+  }
+};
+
+// Persistent workspace shell. Only account/device/thread IDs survive a reload.
+// Opening one row is the explicit request to read that conversation's text.
+globalThis.PhoneWorkspace = {
+  data() {
+    return {
+      workspaceSetupOpen: false, workspaceSidebarOpen: false, workspaceComposeOpen: false,
+      workspaceMessages: [], workspaceCursor: null, workspaceHistoryStatus: '',
+      workspaceHistoryComplete: false, workspaceSentPrompt: '', workspaceView: 'source'
+    };
+  },
+  computed: {
+    workspaceReady() { return !!this.sessionDevice && this.sessionListReady && !this.workspaceSetupOpen && !this.sessionSetupBlocked; },
+    workspaceTranscript() {
+      if (this.workspaceView !== 'task') return this.workspaceMessages;
+      const messages = [];
+      if (this.workspaceSentPrompt) messages.push({ id: 'task-user', role: 'user', text: this.workspaceSentPrompt, complete: true });
+      if (this.sessionFinalReply) messages.push({ id: 'task-assistant', role: 'assistant', text: this.sessionFinalReply, complete: true });
+      return messages;
+    },
+    workspaceHasTask() { return !!(this.sessionDraft || this.sessionResultRequest || this.sessionCanRecover); },
+    workspaceTitle() { return this.workspaceView === 'task' ? '本次派生任务' : this.sessionSelected ? this.sessionTitle(this.sessionSelected) : '选择一条会话'; }
+  },
+  methods: {
+    savedWorkspace() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('nc_session_workspace'));
+        return saved?.owner === this.userId() && typeof saved.device === 'string' && saved.device ? saved : null;
+      } catch { return null; }
+    },
+    rememberWorkspace() {
+      if (!this.sessionDevice || !this.sessionListReady || this.sessionSetupBlocked) return;
+      localStorage.setItem('nc_session_workspace', JSON.stringify({ owner: this.userId(), device: this.sessionDevice, selected: this.sessionSelected || '' }));
+    },
+    clearWorkspaceBody(preserveTask = false) {
+      this.workspaceMessages = []; this.workspaceCursor = null; this.workspaceHistoryComplete = false;
+      this.workspaceHistoryStatus = ''; this.workspaceComposeOpen = false; this.workspaceView = 'source';
+      if (!preserveTask) this.workspaceSentPrompt = '';
+    },
+    resetPhoneSessions() {
+      PhoneSessions.methods.resetPhoneSessions.call(this);
+      this.clearWorkspaceBody(); this.workspaceSidebarOpen = false;
+    },
+    async loadSessionDevices() {
+      const epoch = this.sessionEpoch;
+      await PhoneSessions.methods.loadSessionDevices.call(this);
+      if (epoch !== this.sessionEpoch || this.sessionDevice) return;
+      const saved = this.savedWorkspace();
+      if (!saved || !this.sessionDevices.some(d => d.id === saved.device)) return;
+      this.sessionDevice = saved.device;
+      this.resetPhoneSessions();
+      // A previously completed setup is remembered; connectivity is shown separately.
+      this.sessionListReady = true; this.workspaceSetupOpen = false;
+      this.sessionSelected = saved.selected || '';
+      this.workspaceView = this.workspaceHasTask ? 'task' : 'source';
+      this.sessionStatus = '已恢复这台电脑的工作区。点击会话读取正文，或查询已有任务。';
+      if (!this.sessionCanRecover && !this.sessionResultRequest) await this.refreshWorkspaceSessions();
+    },
+    applyPhoneReceipt(reply, operation) {
+      const task = { draft: this.sessionDraft, submitted: this.sessionSubmitted, consent: this.sessionContextConsent };
+      PhoneSessions.methods.applyPhoneReceipt.call(this, reply, operation);
+      if (reply.status === 'previewed') {
+        this.sessionDraft = task.draft; this.sessionSubmitted = task.submitted; this.sessionContextConsent = task.consent;
+      }
+      if (reply.status === 'listed') { this.workspaceSetupOpen = false; this.rememberWorkspace(); }
+      if (reply.data?.jobId && !['failed', 'disabled'].includes(reply.status)) {
+        this.sessionListReady = true;
+        if (reply.status !== 'draft') this.workspaceView = 'task';
+        this.rememberWorkspace();
+      }
+      if (reply.status === 'previewed') {
+        this.workspaceCursor = reply.data?.bodyVersion === 1 ? reply.data.nextMessageCursor : null;
+        this.workspaceHistoryStatus = reply.data?.bodyVersion === 1
+          ? '正在读取会话正文…' : '这台电脑的程序暂只支持短摘录。升级后台程序后，重新打开会话即可读取正文。';
+      }
+    },
+    async refreshWorkspaceSessions(next = false) {
+      if (this.sessionBusy || !this.sessionDevice || this.sessionCanRecover || !this.sessionCanChangeDevice) return;
+      const rows = this.sessionRows, selected = this.sessionSelected;
+      const epoch = this.sessionEpoch, generation = this.sessionGeneration;
+      await this.phoneSessionRequest('list', next && this.sessionCursor ? { cursor: this.sessionCursor } : {});
+      if (epoch !== this.sessionEpoch || generation !== this.sessionGeneration || !this.sessionListReady) return;
+      if (next) this.sessionRows = [...new Map([...rows, ...this.sessionRows].map(row => [row.sourceThreadId, row])).values()];
+      this.sessionSelected = selected;
+      this.rememberWorkspace();
+    },
+    async openWorkspaceSession(id) {
+      if (!this.sessionCanChangeDevice || !this.sessionRows.some(s => s.sourceThreadId === id)) return;
+      this.clearWorkspaceBody(true);
+      this.sessionSelected = id; this.sessionPreview = null; this.sessionCwdConsent = false;
+      this.workspaceSidebarOpen = false; this.rememberWorkspace();
+      const epoch = this.sessionEpoch, generation = this.sessionGeneration;
+      await this.previewPhoneSession();
+      if (epoch !== this.sessionEpoch || generation !== this.sessionGeneration || this.sessionSelected !== id) return;
+      if (this.sessionPreview?.bodyVersion === 1) await this.loadWorkspaceMessages();
+    },
+    previewPhoneSession() {
+      if (!this.sessionSelected || this.sessionCanRecover || this.sessionBusy) return;
+      this.sessionPreview = null;
+      return this.phoneSessionRequest('preview', { sourceThreadId: this.sessionSelected });
+    },
+    async loadWorkspaceMessages() {
+      if (this.sessionBusy || !this.sessionPreview || !this.workspaceCursor || this.sessionCanRecover) return;
+      const epoch = this.sessionEpoch, generation = this.sessionGeneration, device = this.sessionDevice;
+      const preview = this.sessionPreview.previewId, source = this.sessionPreview.sourceThreadId, cursor = this.workspaceCursor;
+      const requestId = crypto.randomUUID();
+      this.sessionBusy = true; this.workspaceHistoryStatus = '正在读取会话正文…';
+      try {
+        await this.sessionRpc('enqueue_session_request', { p_device: device, p_payload: {
+          requestId, operation: 'preview', relayVersion: 1, expiresAt: new Date(Date.now() + 120000).toISOString(),
+          sourceThreadId: source, previewId: preview, cursor
+        } });
+        const reply = await this.pollSessionReceipt(requestId, device, epoch, generation);
+        if (epoch !== this.sessionEpoch || generation !== this.sessionGeneration || this.sessionPreview?.previewId !== preview) return;
+        if (reply.status === 'expired') { this.workspaceHistoryStatus = '正文读取已过期。重新打开这条会话即可继续查看。'; return; }
+        const data = reply.data;
+        if (reply.status !== 'messages' || data?.previewId !== preview || data.sourceThreadId !== source ||
+            !Array.isArray(data.messages) || data.messages.length > 100 ||
+            (data.nextCursor !== null && typeof data.nextCursor !== 'string') || data.nextCursor === cursor) throw new Error('invalid_messages');
+        const messages = this.workspaceMessages.map(m => ({ ...m }));
+        for (const part of data.messages) {
+          if (typeof part.id !== 'string' || !['user', 'assistant'].includes(part.role) || typeof part.text !== 'string' ||
+              !Number.isSafeInteger(part.offset) || part.offset < 0 || typeof part.complete !== 'boolean') throw new Error('invalid_message');
+          const existing = messages.find(m => m.id === part.id);
+          if (existing) {
+            if (existing.role !== part.role || existing.complete || existing.text.length !== part.offset) throw new Error('invalid_continuation');
+            existing.text += part.text; existing.complete = part.complete;
+          } else {
+            if (part.offset !== 0) throw new Error('missing_message_start');
+            messages.push({ ...part });
+          }
+        }
+        if (data.nextCursor === null && messages.some(m => !m.complete)) throw new Error('incomplete_body');
+        this.workspaceMessages = messages; this.workspaceCursor = data.nextCursor;
+        this.workspaceHistoryComplete = data.nextCursor === null;
+        this.workspaceHistoryStatus = this.workspaceHistoryComplete
+          ? (messages.length ? '本次读取的会话正文已加载完毕。' : '这条会话还没有可展示的用户消息或 AI 回复。')
+          : '已读取部分正文，可继续加载。';
+      } catch {
+        if (epoch === this.sessionEpoch && generation === this.sessionGeneration)
+          this.workspaceHistoryStatus = '正文暂未读到。可再次读取同一页，不会发送模型任务。';
+      } finally { if (epoch === this.sessionEpoch && generation === this.sessionGeneration) this.sessionBusy = false; }
+    },
+    configureWorkspace() {
+      if (!this.sessionCanChangeDevice) return;
+      this.workspaceSetupOpen = true; this.workspaceSidebarOpen = false;
+    },
+    showWorkspaceTask() { this.workspaceView = 'task'; this.workspaceSidebarOpen = false; },
+    async executePhoneSession() {
+      if (!this.sessionDraft || this.sessionDraft.state !== 'draft' || !this.sessionContextConsent || !this.sessionTask.trim() || this.sessionBusy || this.sessionCanRecover || this.sessionSubmitted) return;
+      this.workspaceSentPrompt = this.sessionTask.trim(); this.workspaceView = 'task'; this.workspaceComposeOpen = false;
+      await PhoneSessions.methods.executePhoneSession.call(this);
+      if (!this.sessionSubmitted && !this.sessionCanRecover && this.sessionDraft?.state === 'draft') {
+        this.workspaceView = 'source'; this.workspaceComposeOpen = true; this.workspaceSentPrompt = '';
       }
     }
   }

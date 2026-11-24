@@ -175,6 +175,66 @@
   }
   nav.tabs button { flex: 1; min-height: 48px; border: 0; background: none; color: var(--muted); font-size: 12px; font-family: inherit; }
   nav.tabs button.on { color: var(--text); font-weight: 600; }
+
+  /* The computer workspace is scoped to the task page. Other tabs retain their layout. */
+  main.task-main { max-width: 1240px; }
+  main.task-main > .page > details.card { width: 100%; max-width: 608px; justify-self: center; }
+  .setup-nodes { display:flex; list-style:none; padding:0; margin:24px 0; gap:12px; }
+  .setup-nodes li { flex:1; color:var(--muted); font-size:13px; border-top:2px solid var(--line); padding-top:10px; }
+  .setup-nodes span { display:block; font-size:11px; margin-bottom:4px; }
+  .setup-nodes li.done { color:var(--text); border-color:var(--text); }
+  .session-workspace { display:grid; grid-template-columns:248px minmax(0,1fr); min-height:620px; height:calc(100dvh - 150px); max-height:1000px; border:1px solid var(--line); border-radius:16px; overflow:hidden; background:var(--surface); position:relative; }
+  .workspace-sidebar { display:flex; flex-direction:column; padding:20px 12px; min-height:0; background:var(--bg); border-right:1px solid var(--line); overflow:auto; }
+  .workspace-device { display:grid; gap:5px; padding:0 10px; overflow-wrap:anywhere; }
+  .workspace-eyebrow,.workspace-list-label { font-size:11px; color:var(--muted); letter-spacing:.05em; }
+  .workspace-device strong { font-size:14px; font-weight:600; }
+  .workspace-side-actions { display:flex; border-bottom:1px solid var(--line); margin:8px 0 18px; }
+  .workspace-list-label { padding:0 10px; margin:10px 0; }
+  .workspace-session-list { display:grid; align-content:start; gap:4px; }
+  .workspace-row { display:grid; gap:4px; width:100%; text-align:left; border:1px solid transparent; border-radius:9px; padding:11px 10px; background:none; color:var(--text); font:inherit; cursor:pointer; }
+  .workspace-row span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+  .workspace-row small { font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .workspace-row:hover,.workspace-row.on { background:var(--surface); border-color:var(--line); }
+  .workspace-row.on { box-shadow:inset 2px 0 var(--text); }
+  .workspace-row:disabled { cursor:default; opacity:.55; }
+  .workspace-empty,.workspace-side-note { font-size:12px; line-height:1.8; color:var(--muted); padding:0 10px; }
+  .workspace-side-note { margin-top:auto; padding-top:24px; }
+  .workspace-conversation { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  header.workspace-header { position:static; margin:0; padding:18px 24px; background:var(--surface); gap:12px; }
+  .workspace-header h2 { font-size:15px; margin:0; font-weight:600; overflow-wrap:anywhere; }
+  .workspace-header p { font-size:12px; margin:4px 0 0; color:var(--muted); }
+  .workspace-transcript { flex:1; overflow:auto; min-height:120px; padding:24px; display:flex; flex-direction:column; gap:24px; overscroll-behavior:contain; }
+  .conversation-message { max-width:94%; min-width:0; display:grid; gap:7px; }
+  .conversation-message.user { align-self:flex-end; max-width:86%; }
+  .conversation-message.assistant { align-self:flex-start; }
+  .conversation-role { color:var(--muted); font-size:11px; }
+  .conversation-message.user .conversation-role { text-align:right; }
+  .conversation-body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.85; }
+  .conversation-message.user .conversation-body { background:var(--bg); border:1px solid var(--line); border-radius:16px 16px 4px 16px; padding:12px 16px; }
+  .conversation-partial,.workspace-read-status { font-size:12px; color:var(--muted); line-height:1.7; margin:0; }
+  .workspace-load { align-self:center; }
+  .workspace-welcome { margin:auto; text-align:center; max-width:340px; padding:32px 0; }
+  .workspace-welcome > span { font-size:11px; color:var(--muted); }
+  .workspace-welcome h3 { font-size:24px; font-weight:500; margin:12px 0; }
+  .workspace-welcome p { color:var(--muted); font-size:13px; line-height:1.8; }
+  .workspace-composer { border-top:1px solid var(--line); padding:16px 24px; max-height:55%; overflow:auto; }
+  .workspace-composer .status { margin-top:10px; font-size:12px; }
+  .workspace-task-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .workspace-menu,.workspace-backdrop { display:none; }
+  .workspace-legacy { font-size:12px; color:var(--muted); }
+  @media(max-width:700px) {
+    main.task-main { padding:8px; }
+    .session-workspace { grid-template-columns:minmax(0,1fr); min-height:440px; height:calc(100dvh - 138px); border-radius:12px; }
+    .workspace-sidebar { display:none; }
+    .workspace-sidebar.is-open { display:flex; position:absolute; inset:0 auto 0 0; width:min(84%,290px); z-index:4; box-shadow:8px 0 30px #0002; }
+    .workspace-backdrop { display:block; position:absolute; inset:0; background:#0005; border:0; z-index:3; }
+    .workspace-menu { display:inline-block; flex:none; font-size:12px; min-height:40px; }
+    header.workspace-header { padding:12px; }
+    .workspace-transcript { padding:20px 14px; gap:22px; }
+    .workspace-composer { padding:12px; }
+    .conversation-message.user { max-width:92%; }
+  }
+
 </style>
 </head>
 <body>
@@ -185,7 +245,7 @@
     <button class="text-btn" @click="signOut">退出</button>
   </header>
 
-  <main v-if="signedIn">
+  <main v-if="signedIn" :class="{ 'task-main': tab === 'task' && workspaceReady }">
     <section v-show="tab === 'usage'" class="page">
       <p class="lede">{{ headline }}</p>
 
@@ -269,93 +329,102 @@
     </section>
 
     <section v-show="tab === 'task'" class="page">
-      <section class="card" aria-labelledby="session-flow-heading">
-        <div class="card-head">
-          <h2 id="session-flow-heading">从电脑上的会话派生任务</h2>
-          <span class="sub">{{ sessionStep }} / {{ sessionSteps.length }}</span>
-        </div>
-        <ol class="session-steps" aria-label="手机会话进度">
-          <li v-for="(label, index) in sessionSteps" :key="label" :class="{ current: sessionStep === index + 1, done: sessionStep > index + 1 }" :aria-current="sessionStep === index + 1 ? 'step' : null">
-            <span>{{ label }}</span>
-          </li>
+      <section v-if="!workspaceReady" class="card session-setup" aria-labelledby="session-flow-heading">
+        <div class="card-head"><h2 id="session-flow-heading">连接你的电脑</h2><span class="sub">首次使用准备</span></div>
+        <ol class="setup-nodes" aria-label="电脑配置进度">
+          <li :class="{ done: !!sessionDevice }"><span>1</span>选择电脑</li>
+          <li :class="{ done: sessionListReady }"><span>2</span>检查连接</li>
+          <li><span>3</span>进入会话</li>
         </ol>
-        <p v-if="sessionDeviceName && sessionStep !== 1" class="hint">当前电脑 · {{ sessionDeviceName }}</p>
-
-        <section v-if="sessionStep === 1" aria-label="准备电脑">
-          <h3>选择要使用的电脑</h3>
-          <p class="hint">首次使用时，先在电脑上把配置操作单交给 AI 工具。</p>
-          <div class="field">
-            <label for="task-device">这次用哪台电脑</label>
-            <select id="task-device" v-model="sessionDevice" :disabled="sessionBusy || taskBusy" @change="resetPhoneSessions()">
-              <option value="">请选择电脑</option>
-              <option v-for="d in sessionDevices" :key="d.id" :value="d.id">{{ d.name || d.id }} · {{ formatDeviceLastSeen(d.last_seen) }}</option>
-            </select>
-          </div>
-          <div class="actions spaced">
-            <button class="btn" :disabled="sessionBusy || taskBusy" @click="loadSessionDevices">刷新电脑列表</button>
-            <button v-if="!sessionDevices.length && !sessionBusy" class="text-btn" @click="switchTab('settings')">去设置添加电脑</button>
-          </div>
-          <button class="primary" :disabled="sessionBusy || taskBusy || !sessionDevice" @click="listPhoneSessions(false)">检查连接</button>
-          <div class="actions spaced">
-            <a class="text-btn" href="./computer-setup.md" download="手机会话电脑配置操作单.md">下载电脑配置操作单</a>
-          </div>
-        </section>
-
-        <section v-else-if="sessionStep === 2" aria-label="选会话">
-          <h3>选一条要参考的会话</h3>
-          <p class="hint">点选后再打开预览。预览只显示有限摘录，完整历史保存在电脑上。</p>
-          <p v-if="!sessionRows.length" class="empty">这页没有可选的会话。可以刷新列表，或到电脑上确认需要的会话已经保存。</p>
-          <button v-for="s in sessionRows" :key="s.sourceThreadId" class="session-choice" :class="{ on: sessionSelected === s.sourceThreadId }" :aria-pressed="sessionSelected === s.sourceThreadId" :disabled="sessionBusy || sessionCanRecover" @click="selectPhoneSession(s.sourceThreadId)">
-            <span class="choice-name">{{ s.name || '未命名会话' }}</span>
-            <span class="choice-meta">{{ s.cwd }}</span>
-          </button>
-          <button class="primary" :disabled="sessionBusy || !sessionSelected || sessionCanRecover" @click="previewPhoneSession">打开所选会话的预览</button>
-          <div class="actions spaced">
-            <button class="btn" :disabled="sessionBusy || sessionCanRecover" @click="listPhoneSessions(false)">刷新会话列表</button>
-            <button v-if="sessionCursor" class="btn" :disabled="sessionBusy || sessionCanRecover" @click="listPhoneSessions(true)">下一页</button>
-          </div>
-        </section>
-
-        <section v-else-if="sessionStep === 3" aria-label="确认草稿">
-          <h3>确认来源和工作目录</h3>
-          <p class="session-meta">来源会话 · {{ sessionTitle(sessionPreview.sourceThreadId) }}<br>已完成 {{ sessionPreview.turnCount }} 个回合</p>
-          <pre class="result">{{ sessionPreview.excerpt || '这条会话没有可展示的文字摘录。' }}</pre>
-          <p class="sub spaced">草稿会建立独立新会话。创建草稿这一步只在电脑上完成。执行时会继承完整历史前缀、工具记录和可能的隐藏上下文。</p>
-          <div class="field">
-            <label for="session-cwd">工作目录（须在电脑的允许目录内）</label>
-            <input id="session-cwd" v-model="sessionCwd" :disabled="sessionBusy" @input="phoneCwdChanged" />
-          </div>
-          <label class="session-consent"><input type="checkbox" v-model="sessionCwdConsent" :disabled="sessionBusy" />我已检查目录。新会话可能共用这里的文件，任务按只读权限执行。</label>
-          <button class="primary" :disabled="sessionBusy || !sessionCwdConsent || !sessionCwd.trim() || sessionCanRecover" @click="preparePhoneSession">创建派生草稿</button>
-          <button class="text-btn" :disabled="sessionBusy" @click="selectPhoneSession(sessionSelected)">返回会话列表</button>
-        </section>
-
-        <section v-else aria-label="执行与结果">
-          <template v-if="sessionDraft?.state === 'draft' && !sessionSubmitted && !sessionCanRecover">
-            <h3>写下要执行的新任务</h3>
-            <p class="session-meta">来源会话 · {{ sessionTitle(sessionDraft.sourceThreadId) }}<br>工作目录 · {{ sessionDraft.cwd }}<br>供应商 · {{ sessionDraft.provider || '—' }}<br>模型 · {{ sessionDraft.model || '—' }}<br>权限 · 只读</p>
-            <div class="field">
-              <label for="session-task">新任务</label>
-              <textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy" placeholder="例如：根据这段讨论，列出待确认的三个问题。"></textarea>
-            </div>
-            <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy" />我已核对电脑上配置的供应商地址，同意把继承的历史、工具记录、可能的隐藏上下文和这次任务发给该供应商。API Key 留在电脑。最终回复会临时回传给当前账号。</label>
-            <button class="primary" :disabled="sessionBusy || !sessionContextConsent || !sessionTask.trim()" @click="executePhoneSession">确认并执行一次</button>
-          </template>
-          <template v-else>
-            <h3>{{ sessionFinalReply ? '最终回复' : '查看这次请求的结果' }}</h3>
-            <pre v-if="sessionFinalReply" class="result" aria-label="该次最终助手回复">{{ sessionFinalReply }}</pre>
-            <p v-if="sessionFinalReply && sessionResultExpires" class="sub spaced">有效期至 {{ formatSessionResultExpiry(sessionResultExpires) }}。到期后正文会清除。</p>
-            <button v-if="sessionResultRequest || sessionCanRecover" class="primary" :disabled="sessionBusy" @click="checkPhoneSession">查询结果</button>
-            <p class="sub spaced">查询只读取已有结果。断线后再次提交可能重复执行，请先查询。</p>
-          </template>
-        </section>
-
-        <div v-if="sessionStatus" class="status" :class="sessionSetupBlocked ? 'fail' : stateOf(sessionStatus)" role="status" aria-live="polite">{{ sessionStatus }}</div>
-        <div v-if="sessionStep !== 1 && (sessionCanChangeDevice || sessionDraft || sessionCanRecover || sessionResultRequest)" class="actions spaced">
-          <button v-if="sessionStep === 4 && (sessionDraft?.state === 'draft' || sessionCanRecover || (sessionBusy && sessionSubmitted))" class="btn" :disabled="sessionCancelling" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消请求' }}</button>
-          <button v-if="sessionStep === 4 && sessionCanChangeDevice && sessionListReady" class="btn" @click="listPhoneSessions(false)">回到会话列表</button>
-          <button v-if="sessionCanChangeDevice" class="text-btn" @click="resetPhoneSessions()">返回电脑选择</button>
+        <p class="hint">准备好后会进入会话工作区，下次使用会记住这台电脑。</p>
+        <div class="field">
+          <label for="task-device">使用哪台电脑</label>
+          <select id="task-device" v-model="sessionDevice" :disabled="sessionBusy || taskBusy" @change="resetPhoneSessions()">
+            <option value="">请选择电脑</option>
+            <option v-for="d in sessionDevices" :key="d.id" :value="d.id">{{ d.name || d.id }} · {{ formatDeviceLastSeen(d.last_seen) }}</option>
+          </select>
         </div>
+        <div class="actions spaced">
+          <button class="btn" :disabled="sessionBusy || taskBusy" @click="loadSessionDevices">刷新电脑列表</button>
+          <button v-if="!sessionDevices.length && !sessionBusy" class="text-btn" @click="switchTab('settings')">去设置添加电脑</button>
+        </div>
+        <button class="primary" :disabled="sessionBusy || taskBusy || !sessionDevice || sessionCanRecover" @click="listPhoneSessions(false)">{{ sessionBusy ? '正在检查…' : '检查连接并进入' }}</button>
+        <button v-if="sessionCanRecover || sessionResultRequest" class="btn block" :disabled="sessionBusy" @click="checkPhoneSession">查询上次任务</button>
+        <p class="sub spaced">需要首次配置时，把操作单交给电脑上的 AI 工具。</p>
+        <a class="text-btn" href="./computer-setup.md" download="手机会话电脑配置操作单.md">下载电脑配置操作单</a>
+        <button v-if="sessionListReady && !sessionSetupBlocked" class="text-btn" @click="workspaceSetupOpen = false">返回会话工作区</button>
+        <div v-if="sessionStatus" class="status" :class="sessionSetupBlocked ? 'fail' : stateOf(sessionStatus)" role="status">{{ sessionStatus }}</div>
+      </section>
+
+      <section v-else class="session-workspace" aria-label="电脑会话工作区">
+        <button v-if="workspaceSidebarOpen" class="workspace-backdrop" aria-label="关闭会话列表" @click="workspaceSidebarOpen = false"></button>
+        <aside class="workspace-sidebar" :class="{ 'is-open': workspaceSidebarOpen }" aria-label="会话与任务列表">
+          <div class="workspace-device"><span class="workspace-eyebrow">当前电脑</span><strong>{{ sessionDeviceName || '已连接的电脑' }}</strong></div>
+          <div class="workspace-side-actions">
+            <button class="text-btn" :disabled="!sessionCanChangeDevice" @click="refreshWorkspaceSessions(false)">刷新会话</button>
+            <button class="text-btn" :disabled="!sessionCanChangeDevice" @click="configureWorkspace">电脑配置</button>
+          </div>
+          <div class="workspace-list-label">电脑上的会话</div>
+          <div class="workspace-session-list">
+            <button v-for="s in sessionRows" :key="s.sourceThreadId" class="workspace-row" :class="{ on: workspaceView === 'source' && sessionSelected === s.sourceThreadId }" :aria-pressed="workspaceView === 'source' && sessionSelected === s.sourceThreadId" :disabled="!sessionCanChangeDevice" @click="openWorkspaceSession(s.sourceThreadId)">
+              <span>{{ s.name || '未命名会话' }}</span><small>{{ s.model || '点击查看正文' }}</small>
+            </button>
+            <p v-if="!sessionRows.length" class="workspace-empty">{{ sessionBusy ? '正在读取列表…' : '这里还没有会话。可刷新列表，或先在电脑上创建。' }}</p>
+            <button v-if="sessionCursor" class="text-btn" :disabled="!sessionCanChangeDevice" @click="refreshWorkspaceSessions(true)">加载更多会话</button>
+          </div>
+          <template v-if="workspaceHasTask">
+            <div class="workspace-list-label">本次任务</div>
+            <button class="workspace-row" :class="{ on: workspaceView === 'task' }" :aria-pressed="workspaceView === 'task'" @click="showWorkspaceTask"><span>独立派生任务</span><small>{{ sessionFinalReply ? '已收到回复' : '查看进度与结果' }}</small></button>
+          </template>
+          <p class="workspace-side-note">点选一条会话读取正文。新任务会单独派生。</p>
+        </aside>
+        <section class="workspace-conversation" aria-labelledby="workspace-title">
+          <header class="workspace-header">
+            <button class="btn workspace-menu" :aria-expanded="workspaceSidebarOpen" @click="workspaceSidebarOpen = !workspaceSidebarOpen">会话列表</button>
+            <div><h2 id="workspace-title">{{ workspaceTitle }}</h2><p>{{ sessionDeviceName }} · {{ workspaceView === 'task' ? '独立任务，来源会话保持原样' : '电脑会话正文' }}</p></div>
+          </header>
+          <div class="workspace-transcript" role="log" aria-label="聊天正文" aria-live="off">
+            <div v-if="!sessionSelected && !workspaceHasTask" class="workspace-welcome"><span>电脑已就绪</span><h3>从一条会话开始</h3><p>在列表中选择会话，正文会显示在这里。</p><button class="btn workspace-menu" @click="workspaceSidebarOpen = true">选择会话</button></div>
+            <article v-for="message in workspaceTranscript" :key="message.id" class="conversation-message" :class="message.role">
+              <span class="conversation-role">{{ message.role === 'user' ? '你' : 'AI' }}</span>
+              <div class="conversation-body">{{ message.text }}</div>
+              <span v-if="!message.complete" class="conversation-partial">这条消息尚未加载完，可继续读取。</span>
+            </article>
+            <template v-if="workspaceView === 'source' && sessionSelected">
+              <p v-if="workspaceHistoryStatus" class="workspace-read-status" role="status">{{ workspaceHistoryStatus }}</p>
+              <button v-if="workspaceCursor" class="btn workspace-load" :disabled="sessionBusy || sessionCanRecover" @click="loadWorkspaceMessages">{{ sessionBusy ? '正在读取…' : '继续加载正文' }}</button>
+              <button v-if="!workspaceCursor && !sessionPreview && !sessionBusy" class="btn workspace-load" :disabled="!sessionCanChangeDevice" @click="openWorkspaceSession(sessionSelected)">读取所选会话正文</button>
+              <details v-if="sessionPreview && sessionPreview.bodyVersion !== 1" class="workspace-legacy"><summary>查看旧版短摘录</summary><pre class="result">{{ sessionPreview.excerpt }}</pre></details>
+            </template>
+            <p v-if="workspaceView === 'task' && !workspaceTranscript.length" class="workspace-read-status">查询这次任务的进度与结果。原会话没有追加消息。</p>
+            <p v-if="workspaceView === 'task' && sessionFinalReply && sessionResultExpires" class="workspace-read-status">本次回复有效期至 {{ formatSessionResultExpiry(sessionResultExpires) }}。到期后可在电脑会话中查看。</p>
+          </div>
+          <footer class="workspace-composer">
+            <button v-if="workspaceView === 'source' && sessionPreview && !workspaceComposeOpen && sessionCanChangeDevice && sessionPreview.canFork !== false" class="btn" @click="workspaceComposeOpen = true">基于此会话创建独立任务</button>
+            <p v-if="workspaceView === 'source' && sessionPreview?.canFork === false" class="hint">这条会话有未完成或中断的回合，目前可查看正文，暂不从这里派生任务。</p>
+            <section v-if="workspaceComposeOpen && sessionPreview" class="workspace-task-form" aria-label="创建独立任务">
+              <p class="hint">基于「{{ sessionTitle(sessionPreview.sourceThreadId) }}」创建独立新会话，按只读权限执行。</p>
+              <template v-if="sessionDraft?.state !== 'draft'">
+                <div class="field"><label for="session-cwd">工作目录</label><input id="session-cwd" v-model="sessionCwd" :disabled="sessionBusy" @input="phoneCwdChanged" /></div>
+                <label class="session-consent"><input type="checkbox" v-model="sessionCwdConsent" :disabled="sessionBusy" />我已核对工作目录，同意新任务共用这里的文件。</label>
+                <button class="primary" :disabled="sessionBusy || !sessionCwdConsent || !sessionCwd.trim() || sessionCanRecover" @click="preparePhoneSession">准备独立任务</button>
+                <button class="text-btn" :disabled="sessionBusy" @click="workspaceComposeOpen = false">收起</button>
+              </template>
+              <template v-else>
+                <p class="session-meta">供应商 · {{ sessionDraft.provider }}　模型 · {{ sessionDraft.model }}</p>
+                <label for="session-task">发给这个新任务的消息</label>
+                <textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy" placeholder="输入本次任务…"></textarea>
+                <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy" />同意将继承历史（含工具记录与可能的隐藏上下文）和本次任务发送给电脑配置的供应商。最终回复会临时回传给当前账号。</label>
+                <button class="primary" :disabled="sessionBusy || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="executePhoneSession">确认并执行一次</button>
+              </template>
+            </section>
+            <div v-if="workspaceHasTask" class="workspace-task-actions">
+              <button v-if="sessionResultRequest || sessionCanRecover" class="btn" :disabled="sessionBusy" @click="showWorkspaceTask(); checkPhoneSession()">查询任务结果</button>
+              <button v-if="sessionDraft?.state === 'draft' || sessionCanRecover || (sessionBusy && sessionSubmitted)" class="text-btn" :disabled="sessionCancelling" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消本次任务' }}</button>
+            </div>
+            <div v-if="sessionStatus" class="status" :class="stateOf(sessionStatus)" role="status" aria-live="polite">{{ sessionStatus }}</div>
+          </footer>
+        </section>
       </section>
 
       <details class="card">
@@ -531,6 +600,7 @@ createApp({
   data() {
     return {
       ...PhoneSessions.data(),
+      ...PhoneWorkspace.data(),
       email: localStorage.getItem('nc_email') || '',
       password: '',
       authMode: 'signin',
@@ -584,6 +654,7 @@ createApp({
   },
 
   computed: {
+    ...PhoneWorkspace.computed,
     todayCost() { return this.sum(this.since(0), this.since(0)); },
     todayCny() { return this.todayCost * this.rate; },
     last30Cny() { return this.last30 * this.rate; },
@@ -657,6 +728,7 @@ createApp({
 
   methods: {
     ...PhoneSessions.methods,
+    ...PhoneWorkspace.methods,
     formatSessionResultExpiry(value) {
       const label = this.formatDeviceLastSeen(value);
       return label.startsWith('最后上报 ') ? label.slice('最后上报 '.length) : '页面标注的期限';
@@ -772,6 +844,7 @@ createApp({
       if (this.resetPhoneSessions) this.resetPhoneSessions();
       localStorage.removeItem('nc_session_receipt');
       localStorage.removeItem('nc_session_result');
+      localStorage.removeItem('nc_session_workspace');
       ['nc_refresh', 'nc_email', 'nc_display_name', 'nc_route', 'nc_model', 'nc_cwd', 'nc_limit'].forEach(key => localStorage.removeItem(key));
       this.accessToken = null; this.signedIn = false;
       window.location.reload();
