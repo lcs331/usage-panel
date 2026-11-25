@@ -138,11 +138,11 @@ globalThis.PhoneSessions = {
       const payload = { requestId, operation, relayVersion: 1, expiresAt: new Date(Date.now() + 120000).toISOString(), ...options };
       let remembered = false, accepted = false, lookupResult = false;
       this.sessionBusy = true; this.sessionStatus = '等待电脑回执…';
-      if (operation === 'execute') this.sessionSubmitted = true;
+        if (operation === 'execute') this.sessionSubmitted = true;
       try {
         // Persist correlation BEFORE sending: a lost enqueue response must remain recoverable.
         this.rememberPhoneReceipt(requestId, operation); remembered = true;
-        if (operation === 'execute') this.rememberPhoneResult(requestId);
+        if (operation === 'execute' || operation === 'continue') this.rememberPhoneResult(requestId);
         await this.sessionRpc('enqueue_session_request', { p_device: device, p_payload: payload }); accepted = true;
         const reply = await this.pollSessionReceipt(requestId, device, epoch, generation);
         if (epoch !== this.sessionEpoch || generation !== this.sessionGeneration) return;
@@ -152,7 +152,7 @@ globalThis.PhoneSessions = {
           this.sessionStatus = '未收到会话列表，请重新读取。';
         }
         if (!this.sessionCanRecover && reply.status !== 'running') localStorage.removeItem('nc_session_receipt');
-        lookupResult = operation === 'execute';
+        lookupResult = operation === 'execute' || operation === 'continue';
       } catch (error) {
         if (epoch === this.sessionEpoch && generation === this.sessionGeneration) {
           if (!remembered || (!accepted && [400, 401, 403, 404, 409, 422].includes(error?.status))) {
@@ -226,6 +226,23 @@ globalThis.PhoneSessions = {
       this.sessionFinalReply = '';
       return this.phoneSessionRequest('execute', { sourceThreadId: this.sessionDraft.sourceThreadId, jobId: this.sessionDraft.jobId,
         cwd: this.sessionDraft.cwd, prompt: this.sessionTask.trim(), confirmContext: true });
+    },
+    async continuePhoneSession() {
+      const child = this.sessionPreview;
+      if (!child?.canContinue || !this.sessionContextConsent || !this.sessionTask.trim() || this.sessionCanRecover || this.sessionBusy) return;
+      const prompt = this.sessionTask.trim();
+      this.clearPhoneResult();
+      this.workspaceSentPrompt = prompt;
+      this.workspaceView = 'task';
+      await this.phoneSessionRequest('continue', { sourceThreadId: child.parentThreadId, jobId: child.sourceThreadId,
+        previewId: child.previewId, cwd: child.cwd, prompt, confirmContext: true });
+      if (this.sessionCanRecover || this.sessionFinalReply) this.sessionTask = '';
+      if (!this.sessionCanRecover && this.sessionFinalReply && this.sessionSelected === child.sourceThreadId) {
+        this.sessionTask = '';
+        await this.openWorkspaceSession(child.sourceThreadId);
+      }
+      if (!this.sessionCanRecover && !this.sessionFinalReply) this.workspaceView = 'source';
+      this.sessionContextConsent = false;
     },
     async readPhoneResult(seconds = 1) {
       if (this.sessionBusy) return;
@@ -351,6 +368,7 @@ globalThis.PhoneWorkspace = {
   },
   computed: {
     workspaceReady() { return !!this.sessionDevice && this.sessionListReady && !this.workspaceSetupOpen && !this.sessionSetupBlocked; },
+    workspaceHistoryReady() { return this.workspaceHistoryComplete && this.workspaceMessages.length > 0 && this.workspaceMessages.every(m => m.complete); },
     workspaceTranscript() {
       if (this.workspaceView !== 'task') return this.workspaceMessages;
       const messages = [];
@@ -403,6 +421,11 @@ globalThis.PhoneWorkspace = {
         this.sessionDraft = task.draft; this.sessionSubmitted = task.submitted; this.sessionContextConsent = task.consent;
       }
       if (reply.status === 'listed') { this.workspaceSetupOpen = false; this.rememberWorkspace(); }
+      if (reply.data?.newThreadId && reply.data.newThreadId !== reply.data.sourceThreadId &&
+          ['draft', 'running', 'completed'].includes(reply.status)) {
+        const child = { sourceThreadId: reply.data.newThreadId, name: '派生会话', model: reply.data.model || '继续对话' };
+        this.sessionRows = [child, ...this.sessionRows.filter(row => row.sourceThreadId !== child.sourceThreadId)];
+      }
       if (reply.data?.jobId && !['failed', 'disabled'].includes(reply.status)) {
         this.sessionListReady = true;
         if (reply.status !== 'draft') this.workspaceView = 'task';
@@ -490,6 +513,10 @@ globalThis.PhoneWorkspace = {
       if (!this.sessionDraft || this.sessionDraft.state !== 'draft' || !this.sessionContextConsent || !this.sessionTask.trim() || this.sessionBusy || this.sessionCanRecover || this.sessionSubmitted) return;
       this.workspaceSentPrompt = this.sessionTask.trim(); this.workspaceView = 'task'; this.workspaceComposeOpen = false;
       await PhoneSessions.methods.executePhoneSession.call(this);
+      if (this.sessionSubmitted || this.sessionCanRecover) {
+        this.sessionContextConsent = false;
+        this.sessionTask = '';
+      }
       if (!this.sessionSubmitted && !this.sessionCanRecover && this.sessionDraft?.state === 'draft') {
         this.workspaceView = 'source'; this.workspaceComposeOpen = true; this.workspaceSentPrompt = '';
       }

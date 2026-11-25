@@ -381,7 +381,7 @@
         <section class="workspace-conversation" aria-labelledby="workspace-title">
           <header class="workspace-header">
             <button class="btn workspace-menu" :aria-expanded="workspaceSidebarOpen" @click="workspaceSidebarOpen = !workspaceSidebarOpen">会话列表</button>
-            <div><h2 id="workspace-title">{{ workspaceTitle }}</h2><p>{{ sessionDeviceName }} · {{ workspaceView === 'task' ? '独立任务，来源会话保持原样' : '电脑会话正文' }}</p></div>
+            <div><h2 id="workspace-title">{{ workspaceTitle }}</h2><p>{{ sessionDeviceName }} · {{ workspaceView === 'task' ? '本次发送与回复' : (sessionPreview?.canContinue ? '派生子会话，可继续对话' : '电脑会话正文') }}</p></div>
           </header>
           <div class="workspace-transcript" role="log" aria-label="聊天正文" aria-live="off">
             <div v-if="!sessionSelected && !workspaceHasTask" class="workspace-welcome"><span>电脑已就绪</span><h3>从一条会话开始</h3><p>在列表中选择会话，正文会显示在这里。</p><button class="btn workspace-menu" @click="workspaceSidebarOpen = true">选择会话</button></div>
@@ -400,7 +400,13 @@
             <p v-if="workspaceView === 'task' && sessionFinalReply && sessionResultExpires" class="workspace-read-status">本次回复有效期至 {{ formatSessionResultExpiry(sessionResultExpires) }}。到期后可在电脑会话中查看。</p>
           </div>
           <footer class="workspace-composer">
-            <button v-if="workspaceView === 'source' && sessionPreview && !workspaceComposeOpen && sessionCanChangeDevice && sessionPreview.canFork !== false" class="btn" @click="workspaceComposeOpen = true">基于此会话创建独立任务</button>
+            <section v-if="workspaceView === 'source' && sessionPreview?.canContinue && workspaceHistoryReady" class="workspace-task-form" aria-label="继续派生子会话">
+              <label for="session-continue">发送消息</label>
+              <textarea id="session-continue" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy" placeholder="继续这段对话…"></textarea>
+              <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy" />同意将这段子会话的上下文和新消息发送给电脑配置的模型服务。结果正文仍从电脑会话读取。</label>
+              <button class="primary" :disabled="sessionBusy || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="continuePhoneSession">{{ sessionBusy ? '正在发送…' : '发送' }}</button>
+            </section>
+            <button v-if="workspaceView === 'source' && sessionPreview && !sessionPreview.canContinue && !workspaceComposeOpen && sessionCanChangeDevice && sessionPreview.canFork !== false" class="btn" @click="workspaceComposeOpen = true">基于此会话创建独立任务</button>
             <p v-if="workspaceView === 'source' && sessionPreview?.canFork === false" class="hint">这条会话有未完成或中断的回合，目前可查看正文，暂不从这里派生任务。</p>
             <section v-if="workspaceComposeOpen && sessionPreview" class="workspace-task-form" aria-label="创建独立任务">
               <p class="hint">基于「{{ sessionTitle(sessionPreview.sourceThreadId) }}」创建独立新会话，按只读权限执行。</p>
@@ -420,6 +426,7 @@
             </section>
             <div v-if="workspaceHasTask" class="workspace-task-actions">
               <button v-if="sessionResultRequest || sessionCanRecover" class="btn" :disabled="sessionBusy" @click="showWorkspaceTask(); checkPhoneSession()">查询任务结果</button>
+              <button v-if="workspaceView === 'task' && sessionPreview?.canContinue" class="btn" :disabled="sessionBusy || sessionCanRecover" @click="openWorkspaceSession(sessionSelected)">返回对话并刷新正文</button>
               <button v-if="sessionDraft?.state === 'draft' || sessionCanRecover || (sessionBusy && sessionSubmitted)" class="text-btn" :disabled="sessionCancelling" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消本次任务' }}</button>
             </div>
             <div v-if="sessionStatus" class="status" :class="stateOf(sessionStatus)" role="status" aria-live="polite">{{ sessionStatus }}</div>
