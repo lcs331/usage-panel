@@ -237,10 +237,6 @@ globalThis.PhoneSessions = {
       await this.phoneSessionRequest('continue', { sourceThreadId: child.parentThreadId, jobId: child.sourceThreadId,
         previewId: child.previewId, cwd: child.cwd, prompt, confirmContext: true });
       if (this.sessionCanRecover || this.sessionFinalReply) this.sessionTask = '';
-      if (!this.sessionCanRecover && this.sessionFinalReply && this.sessionSelected === child.sourceThreadId) {
-        this.sessionTask = '';
-        await this.openWorkspaceSession(child.sourceThreadId);
-      }
       if (!this.sessionCanRecover && !this.sessionFinalReply) this.workspaceView = 'source';
       this.sessionContextConsent = false;
     },
@@ -377,6 +373,10 @@ globalThis.PhoneWorkspace = {
       return messages;
     },
     workspaceHasTask() { return !!(this.sessionDraft || this.sessionResultRequest || this.sessionCanRecover); },
+    workspaceCompletedChild() {
+      const task = this.sessionDraft;
+      return task?.state === 'completed' && task.newThreadId && task.newThreadId !== task.sourceThreadId ? task.newThreadId : '';
+    },
     workspaceTitle() { return this.workspaceView === 'task' ? '本次派生任务' : this.sessionSelected ? this.sessionTitle(this.sessionSelected) : '选择一条会话'; }
   },
   methods: {
@@ -456,6 +456,33 @@ globalThis.PhoneWorkspace = {
       await this.previewPhoneSession();
       if (epoch !== this.sessionEpoch || generation !== this.sessionGeneration || this.sessionSelected !== id) return;
       if (this.sessionPreview?.bodyVersion === 1) await this.loadWorkspaceMessages();
+    },
+    async readPhoneResult(seconds = 1) {
+      const epoch = this.sessionEpoch, generation = this.sessionGeneration;
+      const requestId = this.phoneRecord('nc_session_result')?.requestId;
+      const taskView = this.workspaceView === 'task';
+      await PhoneSessions.methods.readPhoneResult.call(this, seconds);
+      if (epoch !== this.sessionEpoch || generation !== this.sessionGeneration ||
+          requestId !== this.sessionResultRequest || !taskView || this.workspaceView !== 'task' ||
+          !this.sessionFinalReply || !this.workspaceCompletedChild) return;
+      await this.openCompletedWorkspaceConversation();
+    },
+    async openCompletedWorkspaceConversation() {
+      const child = this.workspaceCompletedChild;
+      if (!child || !this.sessionCanChangeDevice) return;
+      const epoch = this.sessionEpoch, generation = this.sessionGeneration;
+      if (!this.sessionRows.some(row => row.sourceThreadId === child))
+        this.sessionRows = [{ sourceThreadId: child, name: '派生会话' }, ...this.sessionRows];
+      await this.openWorkspaceSession(child);
+      if (epoch !== this.sessionEpoch || generation !== this.sessionGeneration || this.sessionSelected !== child) return;
+      if (this.sessionPreview?.sourceThreadId !== child || this.sessionPreview.bodyVersion !== 1 ||
+          (!this.workspaceHistoryComplete && !this.workspaceMessages.length)) {
+        this.workspaceView = 'task';
+        this.sessionStatus = '回复已收到，子会话正文暂未打开。点击「继续对话」重新读取，不会重发消息。';
+      } else {
+        this.sessionContextConsent = false;
+        this.sessionStatus = '已打开派生子会话。正文加载完毕后，可在下方继续发送消息。';
+      }
     },
     previewPhoneSession() {
       if (!this.sessionSelected || this.sessionCanRecover || this.sessionBusy) return;

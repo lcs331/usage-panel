@@ -426,7 +426,7 @@
             </section>
             <div v-if="workspaceHasTask" class="workspace-task-actions">
               <button v-if="sessionResultRequest || sessionCanRecover" class="btn" :disabled="sessionBusy" @click="showWorkspaceTask(); checkPhoneSession()">查询任务结果</button>
-              <button v-if="workspaceView === 'task' && sessionPreview?.canContinue" class="btn" :disabled="sessionBusy || sessionCanRecover" @click="openWorkspaceSession(sessionSelected)">返回对话并刷新正文</button>
+              <button v-if="workspaceView === 'task' && workspaceCompletedChild" class="btn" :disabled="!sessionCanChangeDevice" @click="openCompletedWorkspaceConversation">继续对话</button>
               <button v-if="sessionDraft?.state === 'draft' || sessionCanRecover || (sessionBusy && sessionSubmitted)" class="text-btn" :disabled="sessionCancelling" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消本次任务' }}</button>
             </div>
             <div v-if="sessionStatus" class="status" :class="stateOf(sessionStatus)" role="status" aria-live="polite">{{ sessionStatus }}</div>
