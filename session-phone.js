@@ -9,7 +9,7 @@ globalThis.PhoneSessions = {
       sessionStatus: '选择电脑后，即可检查连接。',
       sessionLastRequest: '', sessionLastOperation: '', sessionCanRecover: false, sessionGeneration: 0,
       sessionResultRequest: '', sessionFinalReply: '', sessionResultExpires: '', sessionResultTruncated: false,
-      sessionResultTimer: null
+      sessionResultTimer: null, sessionWaitTimer: null, sessionWaitingSince: 0, sessionResultPending: false
     };
   },
   methods: {
@@ -29,6 +29,8 @@ globalThis.PhoneSessions = {
     },
     resetPhoneSessions() {
       clearTimeout(this.sessionResultTimer); this.sessionResultTimer = null;
+      clearTimeout(this.sessionWaitTimer); this.sessionWaitTimer = null;
+      this.sessionWaitingSince = 0; this.sessionResultPending = false;
       this.sessionGeneration++;
       this.sessionRows = []; this.sessionCursor = null; this.sessionSelected = '';
       this.sessionListReady = false; this.sessionSetupBlocked = false;
@@ -99,9 +101,12 @@ globalThis.PhoneSessions = {
     rememberPhoneResult(requestId) {
       localStorage.setItem('nc_session_result', JSON.stringify({ owner: this.userId(), device: this.sessionDevice, requestId }));
       this.sessionResultRequest = requestId;
+      this.sessionWaitingSince = Date.now(); this.sessionResultPending = true;
     },
     clearPhoneResult() {
       clearTimeout(this.sessionResultTimer); this.sessionResultTimer = null;
+      clearTimeout(this.sessionWaitTimer); this.sessionWaitTimer = null;
+      this.sessionWaitingSince = 0; this.sessionResultPending = false;
       this.sessionFinalReply = ''; this.sessionResultExpires = ''; this.sessionResultTruncated = false;
       if (this.phoneRecord('nc_session_result')) localStorage.removeItem('nc_session_result');
       this.sessionResultRequest = '';
@@ -245,6 +250,7 @@ globalThis.PhoneSessions = {
       const saved = this.phoneRecord('nc_session_result');
       if (!saved) { this.sessionStatus = '请选回发起任务的电脑，再查询结果。'; return; }
       const epoch = this.sessionEpoch, generation = this.sessionGeneration;
+      if (!this.sessionWaitingSince) this.sessionWaitingSince = Date.now();
       this.sessionBusy = true; this.sessionFinalReply = '';
       try {
         for (let i = 0; i < seconds; i++) {
@@ -258,6 +264,8 @@ globalThis.PhoneSessions = {
             jobId: reply.jobId, state: reply.status === 'ready' ? 'completed' : reply.status };
           this.sessionCanRecover = reply.status === 'pending' || reply.status === 'unknown';
           if (reply.status === 'ready') {
+            this.sessionResultPending = false;
+            clearTimeout(this.sessionWaitTimer); this.sessionWaitTimer = null;
             const remaining = Date.parse(reply.expiresAt) - Date.now();
             if (typeof reply.body !== 'string' || new TextEncoder().encode(reply.body).length > 16384 ||
                 !Number.isFinite(remaining) || remaining <= 0 || remaining > 16 * 60000) throw new Error('invalid_result');
@@ -274,6 +282,15 @@ globalThis.PhoneSessions = {
               interrupted: '任务已中断，没有最终回复。', unknown: '执行结果未知，不能重复派单。',
               unavailable: '最终回复不可用或被敏感内容检查阻止，请在电脑核对。', expired: '结果已过期，正文不可用；不会重新执行。' };
             this.sessionStatus = labels[reply.status];
+            if (reply.status === 'pending') {
+              this.sessionResultPending = true;
+              const waited = Math.max(0, Math.floor((Date.now() - (this.sessionWaitingSince || Date.now())) / 1000));
+              const elapsed = waited < 60 ? `已等待 ${waited} 秒` : `已等待 ${Math.floor(waited / 60)} 分 ${waited % 60} 秒`;
+              this.sessionStatus = `正在等待电脑和模型回复，${elapsed}。仍在处理中，不用重新发送。`;
+            } else {
+              this.sessionResultPending = false;
+              clearTimeout(this.sessionWaitTimer); this.sessionWaitTimer = null;
+            }
           }
           if (reply.status !== 'pending') {
             if (this.phoneRecord('nc_session_receipt')?.requestId === saved.requestId) localStorage.removeItem('nc_session_receipt');
@@ -284,9 +301,18 @@ globalThis.PhoneSessions = {
       } catch {
         if (epoch === this.sessionEpoch && generation === this.sessionGeneration) {
           this.sessionCanRecover = true;
-          this.sessionStatus = '结果暂不可读取：请核对派单账号、原电脑、网络及有效期。不会重发任务。';
+          this.sessionResultPending = true;
+          this.sessionStatus = '暂时连不上结果服务，消息没有重发；正在继续检查。';
         }
       } finally { if (epoch === this.sessionEpoch && generation === this.sessionGeneration) this.sessionBusy = false; }
+      if (epoch === this.sessionEpoch && generation === this.sessionGeneration && this.sessionResultPending) {
+        clearTimeout(this.sessionWaitTimer);
+        this.sessionWaitTimer = setTimeout(() => {
+          this.sessionWaitTimer = null;
+          if (epoch === this.sessionEpoch && generation === this.sessionGeneration && this.sessionResultPending && !this.sessionBusy)
+            return this.readPhoneResult(1);
+        }, 3000);
+      }
     },
     async checkPhoneSession() {
       if (this.sessionBusy) return;
@@ -320,6 +346,7 @@ globalThis.PhoneSessions = {
     async cancelPhoneSession() {
       if (this.sessionCancelling || !this.sessionDevice || (!this.sessionDraft && !this.sessionLastRequest && !this.sessionResultRequest)) return;
       clearTimeout(this.sessionResultTimer); this.sessionResultTimer = null;
+      clearTimeout(this.sessionWaitTimer); this.sessionWaitTimer = null; this.sessionResultPending = false;
       this.sessionFinalReply = ''; this.sessionResultExpires = ''; this.sessionResultTruncated = false;
       this.sessionCancelling = true;
       const epoch = this.sessionEpoch, device = this.sessionDevice;
@@ -373,6 +400,10 @@ globalThis.PhoneWorkspace = {
       return messages;
     },
     workspaceHasTask() { return !!(this.sessionDraft || this.sessionResultRequest || this.sessionCanRecover); },
+    workspaceWaitDuration() {
+      const waited = Math.max(0, Math.floor((Date.now() - (this.sessionWaitingSince || Date.now())) / 1000));
+      return waited < 60 ? `${waited} 秒` : `${Math.floor(waited / 60)} 分 ${waited % 60} 秒`;
+    },
     workspaceCompletedChild() {
       const task = this.sessionDraft;
       return task?.state === 'completed' && task.newThreadId && task.newThreadId !== task.sourceThreadId ? task.newThreadId : '';
@@ -380,6 +411,37 @@ globalThis.PhoneWorkspace = {
     workspaceTitle() { return this.workspaceView === 'task' ? '本次派生任务' : this.sessionSelected ? this.sessionTitle(this.sessionSelected) : '选择一条会话'; }
   },
   methods: {
+    renderConversationMarkdown(value) {
+      const escape = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      const inline = text => {
+        return text.split(/(`[^`\n]+`)/g).map(part => {
+          if (part.startsWith('`') && part.endsWith('`')) return `<code>${escape(part.slice(1, -1))}</code>`;
+          return escape(part).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/__(.+?)__/g, '<strong>$1</strong>')
+            .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+        }).join('');
+      };
+      const lines = String(value ?? '').replace(/\r\n?/g, '\n').split('\n');
+      const blocks = []; let paragraph = [], list = [], code = [], fenced = false;
+      const flushParagraph = () => { if (paragraph.length) { blocks.push(`<p>${paragraph.map(inline).join('<br>')}</p>`); paragraph = []; } };
+      const flushList = () => { if (list.length) { blocks.push(`<ul>${list.map(item => `<li>${inline(item)}</li>`).join('')}</ul>`); list = []; } };
+      for (const line of lines) {
+        if (/^\s*```/.test(line)) {
+          flushParagraph(); flushList();
+          if (fenced) { blocks.push(`<pre><code>${escape(code.join('\n'))}</code></pre>`); code = []; }
+          fenced = !fenced; continue;
+        }
+        if (fenced) { code.push(line); continue; }
+        if (!line.trim()) { flushParagraph(); flushList(); continue; }
+        const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+        if (heading) { flushParagraph(); flushList(); const level = heading[1].length; blocks.push(`<h${level}>${inline(heading[2])}</h${level}>`); continue; }
+        const item = line.match(/^\s*[-*+]\s+(.+)$/);
+        if (item) { flushParagraph(); list.push(item[1]); continue; }
+        flushList(); paragraph.push(line);
+      }
+      if (fenced) blocks.push(`<pre><code>${escape(code.join('\n'))}</code></pre>`);
+      flushParagraph(); flushList();
+      return blocks.join('');
+    },
     savedWorkspace() {
       try {
         const saved = JSON.parse(localStorage.getItem('nc_session_workspace'));

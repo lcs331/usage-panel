@@ -209,7 +209,16 @@
   .conversation-message.assistant { align-self:flex-start; }
   .conversation-role { color:var(--muted); font-size:11px; }
   .conversation-message.user .conversation-role { text-align:right; }
-  .conversation-body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.85; }
+  .conversation-body { overflow-wrap:anywhere; font-size:14px; line-height:1.85; }
+  .conversation-body p { margin:0 0 12px; white-space:pre-wrap; }
+  .conversation-body p:last-child { margin-bottom:0; }
+  .conversation-body h1,.conversation-body h2,.conversation-body h3,.conversation-body h4 { margin:18px 0 9px; line-height:1.4; }
+  .conversation-body h1 { font-size:1.45em; }.conversation-body h2 { font-size:1.3em; }.conversation-body h3,.conversation-body h4 { font-size:1.12em; }
+  .conversation-body ul { margin:8px 0 12px; padding-left:24px; }.conversation-body li { padding-left:3px; margin:4px 0; }
+  .conversation-body code { padding:2px 5px; border-radius:5px; background:var(--bg); font:0.9em/1.5 ui-monospace,Consolas,monospace; }
+  .conversation-body pre { margin:10px 0; padding:12px; border:1px solid var(--line); border-radius:9px; background:var(--bg); overflow:auto; white-space:pre; }
+  .conversation-body pre code { padding:0; background:none; }
+  .conversation-waiting { align-self:flex-start; padding:10px 13px; border-radius:12px; background:var(--ok-soft); color:var(--ok); font-size:13px; }
   .conversation-message.user .conversation-body { background:var(--bg); border:1px solid var(--line); border-radius:16px 16px 4px 16px; padding:12px 16px; }
   .conversation-partial,.workspace-read-status { font-size:12px; color:var(--muted); line-height:1.7; margin:0; }
   .workspace-load { align-self:center; }
@@ -387,9 +396,12 @@
             <div v-if="!sessionSelected && !workspaceHasTask" class="workspace-welcome"><span>电脑已就绪</span><h3>从一条会话开始</h3><p>在列表中选择会话，正文会显示在这里。</p><button class="btn workspace-menu" @click="workspaceSidebarOpen = true">选择会话</button></div>
             <article v-for="message in workspaceTranscript" :key="message.id" class="conversation-message" :class="message.role">
               <span class="conversation-role">{{ message.role === 'user' ? '你' : 'AI' }}</span>
-              <div class="conversation-body">{{ message.text }}</div>
+              <div class="conversation-body" v-html="renderConversationMarkdown(message.text)"></div>
               <span v-if="!message.complete" class="conversation-partial">这条消息尚未加载完，可继续读取。</span>
             </article>
+            <div v-if="workspaceView === 'task' && sessionResultPending" class="conversation-waiting" role="status" aria-live="polite">
+              正在等待电脑和模型回复，已等待 {{ workspaceWaitDuration }}。仍在处理中，不要重复发送。
+            </div>
             <template v-if="workspaceView === 'source' && sessionSelected">
               <p v-if="workspaceHistoryStatus" class="workspace-read-status" role="status">{{ workspaceHistoryStatus }}</p>
               <button v-if="workspaceCursor" class="btn workspace-load" :disabled="sessionBusy || sessionCanRecover" @click="loadWorkspaceMessages">{{ sessionBusy ? '正在读取…' : '继续加载正文' }}</button>
