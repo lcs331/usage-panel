@@ -231,9 +231,24 @@
   .workspace-task-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .workspace-menu,.workspace-backdrop { display:none; }
   .workspace-legacy { font-size:12px; color:var(--muted); }
+  .workspace-source,.workspace-rename { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:4px 16px; border-bottom:1px solid var(--line); }
+  .workspace-source .text-btn:first-child { margin-right:auto; text-align:left; }
+  .workspace-rename input { width:auto; min-width:120px; flex:1; }
+  .workspace-unread { font-size:10px; color:var(--text); margin-left:5px; }
+  .conversation-message { grid-template-columns:minmax(0,1fr); min-width:0; }
+  .conversation-body { min-width:0; max-width:100%; }
+  .workspace-composer textarea { min-height:64px; max-height:180px; overflow-y:auto; resize:none; font-size:16px; }
+  .conversation-copy { align-self:flex-start; font-size:11px; padding:4px 0; }
+  .conversation-code { position:relative; min-width:0; max-width:100%; }
+  .conversation-code > button { display:block; margin-left:auto; border:0; background:transparent; color:var(--muted); font:inherit; font-size:12px; cursor:pointer; padding:8px; }
+  .conversation-table { max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .conversation-table table { border-collapse:collapse; width:100%; margin:10px 0; white-space:normal; }
+  .conversation-table th,.conversation-table td { border:1px solid var(--line); padding:8px 12px; text-align:left; min-width:100px; }
+  .conversation-body ol { padding-left:24px; }
+  .workspace-new-reply { display:block; margin:0 auto 8px; }
   @media(max-width:700px) {
     main.task-main { padding:8px; }
-    .session-workspace { grid-template-columns:minmax(0,1fr); min-height:440px; height:calc(100dvh - 138px); border-radius:12px; }
+    .session-workspace { grid-template-columns:minmax(0,1fr); min-height:0; height:calc(var(--workspace-viewport, 100dvh) - 138px); border-radius:12px; }
     .workspace-sidebar { display:none; }
     .workspace-sidebar.is-open { display:flex; position:absolute; inset:0 auto 0 0; width:min(84%,290px); z-index:4; box-shadow:8px 0 30px #0002; }
     .workspace-backdrop { display:block; position:absolute; inset:0; background:#0005; border:0; z-index:3; }
@@ -241,6 +256,17 @@
     header.workspace-header { padding:12px; }
     .workspace-transcript { padding:20px 14px; gap:22px; }
     .workspace-composer { padding:12px; }
+    .workspace-keyboard .task-main { padding-top:0; padding-bottom:0; }
+    .workspace-keyboard .session-workspace { height:calc(var(--workspace-viewport, 100dvh) - 16px); }
+    .workspace-keyboard body > #app > header,.workspace-keyboard nav.tabs { display:none; }
+    .workspace-keyboard .workspace-transcript { min-height:0; }
+    .workspace-keyboard .workspace-composer { flex-shrink:0; padding-bottom:max(8px, env(safe-area-inset-bottom)); max-height:75%; }
+    .workspace-keyboard .workspace-composer textarea { max-height:min(180px, calc(var(--workspace-viewport) * .25)); }
+    .workspace-keyboard .workspace-task-form[aria-label="继续派生子会话"] { display:grid; grid-template-columns:minmax(0,1fr) 76px; column-gap:8px; }
+    .workspace-keyboard .workspace-task-form[aria-label="继续派生子会话"] > label { grid-column:1 / -1; }
+    .workspace-keyboard #session-continue { grid-column:1; grid-row:2; }
+    .workspace-keyboard .workspace-task-form[aria-label="继续派生子会话"] > .primary { grid-column:2; grid-row:2; align-self:end; padding:10px 8px; line-height:1.4; }
+    .workspace-keyboard .workspace-task-form[aria-label="继续派生子会话"] > .session-consent { grid-row:3; }
     .conversation-message.user { max-width:92%; }
   }
 
@@ -373,17 +399,21 @@
             <button class="text-btn" :disabled="!sessionCanChangeDevice" @click="refreshWorkspaceSessions(false)">刷新会话</button>
             <button class="text-btn" :disabled="!sessionCanChangeDevice" @click="configureWorkspace">电脑配置</button>
           </div>
-          <div class="workspace-list-label">电脑上的会话</div>
-          <div class="workspace-session-list">
-            <button v-for="s in sessionRows" :key="s.sourceThreadId" class="workspace-row" :class="{ on: workspaceView === 'source' && sessionSelected === s.sourceThreadId }" :aria-pressed="workspaceView === 'source' && sessionSelected === s.sourceThreadId" :disabled="!sessionCanChangeDevice" @click="openWorkspaceSession(s.sourceThreadId)">
-              <span>{{ s.name || '未命名会话' }}</span><small>{{ s.model || '点击查看正文' }}</small>
-            </button>
-            <p v-if="!sessionRows.length" class="workspace-empty">{{ sessionBusy ? '正在读取列表…' : '这里还没有会话。可刷新列表，或先在电脑上创建。' }}</p>
-            <button v-if="sessionCursor" class="text-btn" :disabled="!sessionCanChangeDevice" @click="refreshWorkspaceSessions(true)">加载更多会话</button>
-          </div>
+          <p v-if="workspaceListStatus" class="workspace-empty" role="status">{{ workspaceListStatus }}</p>
+          <template v-for="group in workspaceGroups" :key="group.name">
+            <div class="workspace-list-label">{{ group.name }}</div>
+            <div class="workspace-session-list">
+              <button v-for="s in group.rows" :key="s.sourceThreadId" class="workspace-row" :class="{ on: workspaceView === 'source' && sessionSelected === s.sourceThreadId }" :aria-pressed="workspaceView === 'source' && sessionSelected === s.sourceThreadId" @click="openWorkspaceSession(s.sourceThreadId)">
+                <span>{{ s.name || '未命名会话' }} <b v-if="workspaceUnread[sessionDevice + ':' + s.sourceThreadId]" class="workspace-unread">新回复</b></span>
+                <small>{{ workspaceRowDetail(s) }}</small><small v-if="s.model">{{ s.model }}</small>
+              </button>
+              <p v-if="!group.rows.length && !workspaceListFailed && !workspaceReadBusy" class="workspace-empty">暂无{{ group.name }}</p>
+            </div>
+          </template>
+          <button v-if="sessionCursor" class="text-btn" :disabled="workspaceReadBusy" @click="refreshWorkspaceSessions(true)">加载更多会话</button>
           <template v-if="workspaceHasTask">
             <div class="workspace-list-label">本次任务</div>
-            <button class="workspace-row" :class="{ on: workspaceView === 'task' }" :aria-pressed="workspaceView === 'task'" @click="showWorkspaceTask"><span>独立派生任务</span><small>{{ sessionFinalReply ? '已收到回复' : '查看进度与结果' }}</small></button>
+            <button class="workspace-row" @click="showWorkspaceTask"><span>查看本次请求</span><small>{{ workspaceRunStatus }}</small></button>
           </template>
           <p class="workspace-side-note">点选一条会话读取正文。新任务会单独派生。</p>
         </aside>
@@ -392,19 +422,22 @@
             <button class="btn workspace-menu" :aria-expanded="workspaceSidebarOpen" @click="workspaceSidebarOpen = !workspaceSidebarOpen">会话列表</button>
             <div><h2 id="workspace-title">{{ workspaceTitle }}</h2><p>{{ sessionDeviceName }} · {{ workspaceView === 'task' ? '本次发送与回复' : (sessionPreview?.canContinue ? '派生子会话，可继续对话' : '电脑会话正文') }}</p></div>
           </header>
-          <div class="workspace-transcript" role="log" aria-label="聊天正文" aria-live="off">
+          <div v-if="workspaceSourceId" class="workspace-source"><button class="text-btn" @click="openWorkspaceSession(workspaceSourceId)">来源：{{ sessionTitle(workspaceSourceId) }}</button><button class="text-btn" @click="workspaceRenameText = workspaceSelectedRow?.name || ''; workspaceRenameOpen = !workspaceRenameOpen">改名</button><button class="text-btn" :disabled="workspaceReadBusy" @click="changeWorkspaceCatalog('remove')">从面板移除</button></div>
+          <form v-if="workspaceRenameOpen" class="workspace-rename" @submit.prevent="changeWorkspaceCatalog('rename')"><label for="workspace-name">会话名称</label><input id="workspace-name" v-model="workspaceRenameText" maxlength="56" /><button class="btn" :disabled="workspaceReadBusy">保存</button><button type="button" class="text-btn" @click="workspaceRenameOpen = false">取消</button></form>
+          <div ref="workspaceTranscript" class="workspace-transcript" role="log" aria-label="聊天正文" aria-live="off" @scroll="onWorkspaceScroll" @click="onWorkspaceBodyClick">
             <div v-if="!sessionSelected && !workspaceHasTask" class="workspace-welcome"><span>电脑已就绪</span><h3>从一条会话开始</h3><p>在列表中选择会话，正文会显示在这里。</p><button class="btn workspace-menu" @click="workspaceSidebarOpen = true">选择会话</button></div>
             <article v-for="message in workspaceTranscript" :key="message.id" class="conversation-message" :class="message.role">
               <span class="conversation-role">{{ message.role === 'user' ? '你' : 'AI' }}</span>
               <div class="conversation-body" v-html="renderConversationMarkdown(message.text)"></div>
+              <button class="text-btn conversation-copy" @click="copyWorkspaceText(message.text)">复制正文</button>
               <span v-if="!message.complete" class="conversation-partial">这条消息尚未加载完，可继续读取。</span>
             </article>
-            <div v-if="workspaceView === 'task' && sessionResultPending" class="conversation-waiting" role="status" aria-live="polite">
-              正在等待电脑和模型回复，已等待 {{ workspaceWaitDuration }}。仍在处理中，不要重复发送。
+            <div v-if="workspaceRun && sessionSelected === workspaceRun.childId && !['completed', 'rejected', 'failed', 'interrupted'].includes(workspaceRun.state)" class="conversation-waiting" role="status" aria-live="polite">
+              {{ workspaceRunStatus }}
             </div>
             <template v-if="workspaceView === 'source' && sessionSelected">
               <p v-if="workspaceHistoryStatus" class="workspace-read-status" role="status">{{ workspaceHistoryStatus }}</p>
-              <button v-if="workspaceCursor" class="btn workspace-load" :disabled="sessionBusy || sessionCanRecover" @click="loadWorkspaceMessages">{{ sessionBusy ? '正在读取…' : '继续加载正文' }}</button>
+              <button v-if="workspaceCursor" class="btn workspace-load" :disabled="workspaceReadBusy" @click="loadWorkspaceMessages">{{ workspaceReadBusy ? '正在读取…' : '继续加载正文' }}</button>
               <button v-if="!workspaceCursor && !sessionPreview && !sessionBusy" class="btn workspace-load" :disabled="!sessionCanChangeDevice" @click="openWorkspaceSession(sessionSelected)">读取所选会话正文</button>
               <details v-if="sessionPreview && sessionPreview.bodyVersion !== 1" class="workspace-legacy"><summary>查看旧版短摘录</summary><pre class="result">{{ sessionPreview.excerpt }}</pre></details>
             </template>
@@ -412,13 +445,15 @@
             <p v-if="workspaceView === 'task' && sessionFinalReply && sessionResultExpires" class="workspace-read-status">本次回复有效期至 {{ formatSessionResultExpiry(sessionResultExpires) }}。到期后可在电脑会话中查看。</p>
           </div>
           <footer class="workspace-composer">
+            <button v-if="workspaceNewReply" class="btn workspace-new-reply" @click="scrollWorkspaceBottom">新回复 ↓</button>
+            <p v-if="workspaceCopyStatus" class="hint" role="status">{{ workspaceCopyStatus }}</p>
             <section v-if="workspaceView === 'source' && sessionPreview?.canContinue && workspaceHistoryReady" class="workspace-task-form" aria-label="继续派生子会话">
               <label for="session-continue">发送消息</label>
-              <textarea id="session-continue" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy" placeholder="继续这段对话…"></textarea>
+              <textarea id="session-continue" v-model="sessionTask" maxlength="32000" @input="resizeWorkspaceInput" placeholder="继续这段对话…（回车换行）"></textarea>
               <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy" />同意将这段子会话的上下文和新消息发送给电脑配置的模型服务。结果正文仍从电脑会话读取。</label>
-              <button class="primary" :disabled="sessionBusy || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="continuePhoneSession">{{ sessionBusy ? '正在发送…' : '发送' }}</button>
+              <button class="primary" :disabled="sessionBusy || workspaceDeviceBlocked || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="continuePhoneSession">{{ workspaceDeviceBlocked ? '电脑正在处理，请稍候' : '发送' }}</button>
             </section>
-            <button v-if="workspaceView === 'source' && sessionPreview && !sessionPreview.canContinue && !workspaceComposeOpen && sessionCanChangeDevice && sessionPreview.canFork !== false" class="btn" @click="workspaceComposeOpen = true">基于此会话创建独立任务</button>
+            <button v-if="workspaceView === 'source' && sessionPreview && !sessionPreview.canContinue && !workspaceComposeOpen && !workspaceDeviceBlocked && sessionPreview.canFork !== false" class="btn" @click="workspaceComposeOpen = true">基于此会话创建独立任务</button>
             <p v-if="workspaceView === 'source' && sessionPreview?.canFork === false" class="hint">这条会话有未完成或中断的回合，目前可查看正文，暂不从这里派生任务。</p>
             <section v-if="workspaceComposeOpen && sessionPreview" class="workspace-task-form" aria-label="创建独立任务">
               <p class="hint">基于「{{ sessionTitle(sessionPreview.sourceThreadId) }}」创建独立新会话，按只读权限执行。</p>
@@ -431,16 +466,17 @@
               <template v-else>
                 <p class="session-meta">供应商 · {{ sessionDraft.provider }}　模型 · {{ sessionDraft.model }}</p>
                 <label for="session-task">发给这个新任务的消息</label>
-                <textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy" placeholder="输入本次任务…"></textarea>
+                <textarea id="session-task" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy" @input="resizeWorkspaceInput" placeholder="输入本次任务…（回车换行）"></textarea>
                 <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy" />同意将继承历史（含工具记录与可能的隐藏上下文）和本次任务发送给电脑配置的供应商。最终回复会临时回传给当前账号。</label>
-                <button class="primary" :disabled="sessionBusy || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="executePhoneSession">确认并执行一次</button>
+                <button class="primary" :disabled="sessionBusy || workspaceDeviceBlocked || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="executePhoneSession">发送到派生会话</button>
               </template>
             </section>
-            <div v-if="workspaceHasTask" class="workspace-task-actions">
-              <button v-if="sessionResultRequest || sessionCanRecover" class="btn" :disabled="sessionBusy" @click="showWorkspaceTask(); checkPhoneSession()">查询任务结果</button>
+            <div v-if="workspaceHasTask || workspaceDeviceBlocked" class="workspace-task-actions">
+              <button v-if="sessionResultRequest || sessionCanRecover || workspaceDeviceBlocked" class="btn" :disabled="sessionBusy" @click="checkPhoneSession">核查请求状态</button>
               <button v-if="workspaceView === 'task' && workspaceCompletedChild" class="btn" :disabled="!sessionCanChangeDevice" @click="openCompletedWorkspaceConversation">继续对话</button>
               <button v-if="sessionDraft?.state === 'draft' || sessionCanRecover || (sessionBusy && sessionSubmitted)" class="text-btn" :disabled="sessionCancelling" @click="cancelPhoneSession">{{ sessionCancelling ? '取消请求中…' : '取消本次任务' }}</button>
             </div>
+            <p v-if="workspaceRunStatus" class="status" role="status">{{ workspaceRunStatus }}{{ workspaceDeviceBlocked ? ' 可以浏览其他会话，不会自动排队或重发。' : '' }}</p>
             <div v-if="sessionStatus" class="status" :class="stateOf(sessionStatus)" role="status" aria-live="polite">{{ sessionStatus }}</div>
           </footer>
         </section>
@@ -610,6 +646,7 @@
 
 <script src="vue.global.prod.js"></script>
 <script src="session-phone.js"></script>
+<script src="session-workspace.js"></script>
 <script>
 const SUPABASE = 'https://jjxkggytywtttzckptfs.supabase.co';
 const KEY = 'sb_publishable_0bNIG826A1kt5CMU09Ying_sYDv4vZd';
@@ -719,8 +756,7 @@ createApp({
       return this.sessionListReady ? 2 : 1;
     },
     sessionCanChangeDevice() {
-      return !this.sessionBusy && !this.taskBusy && !this.sessionCanRecover &&
-        !['draft', 'running'].includes(this.sessionDraft?.state);
+      return !this.sessionBusy && !this.taskBusy && this.sessionDraft?.state !== 'draft';
     },
     sessionDeviceName() {
       const device = this.sessionDevices.find(item => item.id === this.sessionDevice);
@@ -860,6 +896,7 @@ createApp({
 
     signOut() {
       this.sessionEpoch += 1;
+      if (this.clearWorkspaceRuntime) this.clearWorkspaceRuntime();
       if (this.resetPhoneSessions) this.resetPhoneSessions();
       localStorage.removeItem('nc_session_receipt');
       localStorage.removeItem('nc_session_result');
