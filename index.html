@@ -383,8 +383,9 @@
           <button class="btn" :disabled="sessionBusy || taskBusy" @click="loadSessionDevices">刷新电脑列表</button>
           <button v-if="!sessionDevices.length && !sessionBusy" class="text-btn" @click="switchTab('settings')">去设置添加电脑</button>
         </div>
-        <button class="primary" :disabled="sessionBusy || taskBusy || !sessionDevice || sessionCanRecover" @click="listPhoneSessions(false)">{{ sessionBusy ? '正在检查…' : '检查连接并进入' }}</button>
+        <button class="primary" :disabled="sessionBusy || workspaceReadBusy || taskBusy || !sessionDevice" @click="listPhoneSessions(false)">{{ sessionBusy || workspaceReadBusy ? '正在检查…' : '检查连接并进入' }}</button>
         <button v-if="sessionCanRecover || sessionResultRequest" class="btn block" :disabled="sessionBusy" @click="checkPhoneSession">查询上次任务</button>
+        <p v-if="sessionCanRecover" class="sub spaced" role="status">上次请求仍在核查。你可以继续读取会话列表；在结果确认前，这台电脑不会接受新的任务。</p>
         <p class="sub spaced">需要首次配置时，把操作单交给电脑上的 AI 工具。</p>
         <a class="text-btn" href="./computer-setup.md" download="手机会话电脑配置操作单.md">下载电脑配置操作单</a>
         <button v-if="sessionListReady && !sessionSetupBlocked" class="text-btn" @click="workspaceSetupOpen = false">返回会话工作区</button>
