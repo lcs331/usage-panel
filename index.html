@@ -452,12 +452,12 @@
               <label for="session-continue">发送消息</label>
               <textarea id="session-continue" v-model="sessionTask" maxlength="32000" @input="resizeWorkspaceInput" placeholder="继续这段对话…（回车换行）"></textarea>
               <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy" />同意将这段子会话的上下文和新消息发送给电脑配置的模型服务。结果正文仍从电脑会话读取。</label>
-              <button class="primary" :disabled="sessionBusy || workspaceDeviceBlocked || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="continuePhoneSession">{{ workspaceDeviceBlocked ? '电脑正在处理，请稍候' : '发送' }}</button>
+              <button class="primary" :disabled="sessionBusy || workspaceDeviceBlocked || !sessionContextConsent || !sessionTask.trim() || sessionCanRecover" @click="continuePhoneSession">{{ workspaceSendLabel }}</button>
             </section>
             <section v-if="workspaceView === 'source' && sessionPreview?.canIntervene && workspaceHistoryReady" class="workspace-task-form" aria-label="接续原会话">
               <textarea id="session-source-continue" v-model="sessionTask" maxlength="32000" :disabled="sessionBusy || workspaceDeviceBlocked || sessionCanRecover" @input="resizeWorkspaceInput" placeholder="在手机上继续这条原会话…（回车换行）"></textarea>
               <label class="session-consent"><input type="checkbox" v-model="sessionContextConsent" :disabled="sessionBusy || workspaceDeviceBlocked || sessionCanRecover" />同意将这条原会话的上下文和新消息发送给电脑配置的模型服务；消息会追加到原会话。</label>
-              <button class="primary" :disabled="sessionBusy || workspaceDeviceBlocked || sessionCanRecover || workspaceComputerState !== 'idle' || !sessionContextConsent || !sessionTask.trim()" @click="continuePhoneSession">{{ workspaceComputerState === 'running' || workspaceDeviceBlocked ? '电脑正在处理，请稍候' : workspaceComputerState === 'unknown' ? '电脑状态待核查' : '发送到原会话' }}</button>
+              <button class="primary" :disabled="sessionBusy || workspaceDeviceBlocked || sessionCanRecover || workspaceComputerState !== 'idle' || !sessionContextConsent || !sessionTask.trim()" @click="continuePhoneSession">{{ workspaceDeviceBlocked ? workspaceSendLabel : '发送到原会话' }}</button>
             </section>
             <button v-if="workspaceView === 'source' && sessionPreview && !sessionPreview.canContinue && !workspaceComposeOpen && !workspaceDeviceBlocked && sessionPreview.canFork !== false" class="btn" @click="workspaceComposeOpen = true">基于此会话创建独立任务</button>
             <p v-if="workspaceView === 'source' && sessionPreview?.canFork === false" class="hint">这条会话有未完成或中断的回合，目前可查看正文，暂不从这里派生任务。</p>

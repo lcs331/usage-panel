@@ -15,6 +15,10 @@
     workspaceDeviceBlocked() {
       return !!(this.workspaceRun && !terminal(this.workspaceRun.state)) || (!this.workspaceRun && this.sessionCanRecover) || ['running', 'unknown'].includes(this.workspaceComputerState);
     },
+    workspaceSendLabel() {
+      if (this.workspaceRun?.state === 'unknown' || this.workspaceComputerState === 'unknown') return '请求状态待核查';
+      return this.workspaceDeviceBlocked ? '电脑正在处理，请稍候' : '发送';
+    },
     workspaceCanBrowse() { return !!this.sessionDevice && !this.workspaceSetupOpen; },
     workspaceHasTask() { return !!this.workspaceRun || !!this.sessionDraft || this.sessionCanRecover; },
     workspaceCompletedChild() { return this.workspaceRun?.state === 'completed' ? this.workspaceRun.childId : ''; },
@@ -29,6 +33,8 @@
     workspaceRunStatus() {
       const run = this.workspaceRun;
       if (!run) return this.workspaceComputerState === 'unknown' ? '电脑上有结果未知的请求，先核查状态再发送。' : this.workspaceComputerState === 'running' ? '电脑正在处理其他消息，可以继续浏览。' : '';
+      if (run.state === 'failed' && run.failureCode === 'session_in_use') return '此会话由桌面 Codex 占用，消息未发送。请在电脑继续，或创建独立任务。';
+      if (run.state === 'failed' && run.failureCode === 'request_not_submitted') return '这条消息未提交，可重新打开会话确认后发送。';
       const elapsed = Math.max(0, Math.floor((this.workspaceClock - run.since) / 1000));
       const duration = elapsed < 60 ? `${elapsed} 秒` : `${Math.floor(elapsed / 60)} 分 ${elapsed % 60} 秒`;
       return ({ sending: '正在发送到电脑', running: `电脑已接收，等待回复 · ${duration}`,
@@ -372,7 +378,8 @@
           if (reply.data?.newThreadId !== active.childId || reply.data?.sourceThreadId !== active.sourceThreadId) throw new Error('wrong_run');
           active.state = 'running'; this.upsertRunRow(active);
         } else if (['failed', 'disabled', 'expired'].includes(reply.status)) {
-          active.state = 'rejected'; this.restoreRejectedWorkspaceDraft(active); this.saveWorkspaceRuns();
+          active.failureCode = ['session_in_use', 'request_not_submitted'].includes(reply.code) ? reply.code : '';
+          active.state = active.failureCode ? 'failed' : 'rejected'; this.restoreRejectedWorkspaceDraft(active); this.saveWorkspaceRuns();
         } else active.state = 'unknown';
       } catch (error) {
         if (!this.workspaceValid(active)) return;
@@ -385,6 +392,9 @@
       if (!terminal(active.state) && active.state !== 'unknown') await this.queryWorkspaceRun(active);
     },
     restoreRejectedWorkspaceDraft(run) {
+      const draft = this.workspaceDrafts[run.device + ':' + run.childId];
+      const selected = this.sessionDevice === run.device && this.sessionSelected === run.childId;
+      if (draft && draft !== run.prompt || selected && this.sessionTask && this.sessionTask !== run.prompt) return;
       this.workspaceDrafts[run.device + ':' + run.childId] = run.prompt;
       if (this.sessionDevice === run.device && this.sessionSelected === run.childId) {
         this.sessionTask = run.prompt;
@@ -396,6 +406,12 @@
         }
       }
       run.prompt = ''; run.historyLoaded = true;
+    },
+    applyWorkspaceFailure(run, status) {
+      run.state = status.status;
+      run.failureCode = ['session_in_use', 'request_not_submitted'].includes(status.code) ? status.code : '';
+      if (run.failureCode && run.prompt) this.restoreRejectedWorkspaceDraft(run);
+      this.saveWorkspaceRuns();
     },
     upsertRunRow(run) {
       if (run.device !== this.sessionDevice) return;
@@ -413,7 +429,7 @@
             if (run.childId && run.childId !== status.data.newThreadId) throw new Error('wrong_child');
             run.childId = status.data.newThreadId; run.sourceThreadId = status.data.sourceThreadId; run.jobId = status.data.jobId;
           }
-          if (['failed', 'interrupted', 'cancelled'].includes(status.status)) { run.state = status.status; this.saveWorkspaceRuns(); return; }
+          if (['failed', 'interrupted', 'cancelled'].includes(status.status)) { this.applyWorkspaceFailure(run, status); return; }
           if (['unknown', 'disconnected'].includes(status.status)) { run.state = 'unknown'; return; }
           if (status.status === 'completed') run.confirmedComplete = true;
           if (status.status === 'running') run.state = 'running';
@@ -437,7 +453,16 @@
         } else if (reply.status === 'pending' && !run.confirmedComplete) {
           // A reservation alone cannot prove that the computer received the command.
           if (run.state !== 'recovering') run.state = 'running';
-        } else if (['failed', 'interrupted'].includes(reply.status)) run.state = reply.status;
+        } else if (reply.status === 'failed') {
+          run.state = 'failed';
+          // A failed model turn and a refused submission need different draft handling.
+          // Query only the same request; never dispatch the prompt again.
+          try {
+            const status = await this.workspaceCommand('status', { lookupId: run.requestId, ...(run.jobId ? { jobId: run.jobId } : {}) }, run.device);
+            if (!this.workspaceValid(run)) return;
+            if (status.status === 'failed') this.applyWorkspaceFailure(run, status);
+          } catch { /* The terminal failure is already known; detailed reason may be unavailable. */ }
+        } else if (reply.status === 'interrupted') run.state = reply.status;
         else if (run.confirmedComplete) { run.state = 'completed'; await this.completeWorkspaceRun(run); }
         else run.state = 'unknown';
         this.saveWorkspaceRuns();
