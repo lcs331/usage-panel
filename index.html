@@ -431,14 +431,14 @@
               <span class="conversation-role">{{ message.role === 'user' ? '你' : 'AI' }}</span>
               <div class="conversation-body" v-html="renderConversationMarkdown(message.text)"></div>
               <button class="text-btn conversation-copy" @click="copyWorkspaceText(message.text)">复制正文</button>
-              <span v-if="!message.complete" class="conversation-partial">这条消息尚未加载完，可继续读取。</span>
+              <span v-if="!message.complete || message.offset > 0" class="conversation-partial">这条消息尚未完整加载，向上滑动可继续读取。</span>
             </article>
             <div v-if="workspaceRun && sessionSelected === workspaceRun.childId && !['completed', 'rejected', 'failed', 'interrupted'].includes(workspaceRun.state)" class="conversation-waiting" role="status" aria-live="polite">
               {{ workspaceRunStatus }}
             </div>
             <template v-if="workspaceView === 'source' && sessionSelected">
               <p v-if="workspaceHistoryStatus" class="workspace-read-status" role="status">{{ workspaceHistoryStatus }}</p>
-              <button v-if="workspaceCursor" class="btn workspace-load" :disabled="workspaceReadBusy" @click="loadWorkspaceMessages">{{ workspaceReadBusy ? '正在读取…' : '继续加载正文' }}</button>
+              <button v-if="workspaceCursor" class="btn workspace-load" :disabled="workspaceReadBusy" @click="loadWorkspaceMessages">{{ workspaceReadBusy ? '正在读取…' : '加载更早消息' }}</button>
               <button v-if="!workspaceCursor && !sessionPreview && !sessionBusy" class="btn workspace-load" :disabled="!sessionCanChangeDevice" @click="openWorkspaceSession(sessionSelected)">读取所选会话正文</button>
               <details v-if="sessionPreview && sessionPreview.bodyVersion !== 1" class="workspace-legacy"><summary>查看旧版短摘录</summary><pre class="result">{{ sessionPreview.excerpt }}</pre></details>
             </template>

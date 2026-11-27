@@ -386,12 +386,12 @@ globalThis.PhoneWorkspace = {
     return {
       workspaceSetupOpen: false, workspaceSidebarOpen: false, workspaceComposeOpen: false,
       workspaceMessages: [], workspaceCursor: null, workspaceHistoryStatus: '',
-      workspaceHistoryComplete: false, workspaceSentPrompt: '', workspaceView: 'source'
+      workspaceHistoryComplete: false, workspaceLatestLoaded: false, workspaceSentPrompt: '', workspaceView: 'source'
     };
   },
   computed: {
     workspaceReady() { return !!this.sessionDevice && this.sessionListReady && !this.workspaceSetupOpen && !this.sessionSetupBlocked; },
-    workspaceHistoryReady() { return this.workspaceHistoryComplete && this.workspaceMessages.length > 0 && this.workspaceMessages.every(m => m.complete); },
+    workspaceHistoryReady() { return this.workspaceLatestLoaded && this.workspaceMessages.length > 0; },
     workspaceTranscript() {
       if (this.workspaceView !== 'task') return this.workspaceMessages;
       const messages = [];
@@ -453,7 +453,7 @@ globalThis.PhoneWorkspace = {
       localStorage.setItem('nc_session_workspace', JSON.stringify({ owner: this.userId(), device: this.sessionDevice, selected: this.sessionSelected || '' }));
     },
     clearWorkspaceBody(preserveTask = false) {
-      this.workspaceMessages = []; this.workspaceCursor = null; this.workspaceHistoryComplete = false;
+      this.workspaceMessages = []; this.workspaceCursor = null; this.workspaceHistoryComplete = false; this.workspaceLatestLoaded = false;
       this.workspaceHistoryStatus = ''; this.workspaceComposeOpen = false; this.workspaceView = 'source';
       if (!preserveTask) this.workspaceSentPrompt = '';
     },
@@ -517,7 +517,7 @@ globalThis.PhoneWorkspace = {
       const epoch = this.sessionEpoch, generation = this.sessionGeneration;
       await this.previewPhoneSession();
       if (epoch !== this.sessionEpoch || generation !== this.sessionGeneration || this.sessionSelected !== id) return;
-      if (this.sessionPreview?.bodyVersion === 1) await this.loadWorkspaceMessages();
+      if (this.sessionPreview?.bodyVersion === 1) await this.loadWorkspaceMessages({ initial: true });
     },
     async readPhoneResult(seconds = 1) {
       const epoch = this.sessionEpoch, generation = this.sessionGeneration;
@@ -555,6 +555,7 @@ globalThis.PhoneWorkspace = {
       if (this.sessionBusy || !this.sessionPreview || !this.workspaceCursor || this.sessionCanRecover) return;
       const epoch = this.sessionEpoch, generation = this.sessionGeneration, device = this.sessionDevice;
       const preview = this.sessionPreview.previewId, source = this.sessionPreview.sourceThreadId, cursor = this.workspaceCursor;
+      const scroll = typeof this.workspaceScrollSnapshot === 'function' ? this.workspaceScrollSnapshot() : { top: 0, height: 0, anchor: null, anchorTop: 0 };
       const requestId = crypto.randomUUID();
       this.sessionBusy = true; this.workspaceHistoryStatus = '正在读取会话正文…';
       try {
@@ -569,25 +570,39 @@ globalThis.PhoneWorkspace = {
         if (reply.status !== 'messages' || data?.previewId !== preview || data.sourceThreadId !== source ||
             !Array.isArray(data.messages) || data.messages.length > 100 ||
             (data.nextCursor !== null && typeof data.nextCursor !== 'string') || data.nextCursor === cursor) throw new Error('invalid_messages');
-        const messages = this.workspaceMessages.map(m => ({ ...m }));
+        const initial = cursor === 'latest' || this.workspaceMessages.length === 0;
+        const messages = initial ? [] : this.workspaceMessages.map(m => ({ ...m }));
         for (const part of data.messages) {
           if (typeof part.id !== 'string' || !['user', 'assistant'].includes(part.role) || typeof part.text !== 'string' ||
               !Number.isSafeInteger(part.offset) || part.offset < 0 || typeof part.complete !== 'boolean') throw new Error('invalid_message');
           const existing = messages.find(m => m.id === part.id);
           if (existing) {
-            if (existing.role !== part.role || existing.complete || existing.text.length !== part.offset) throw new Error('invalid_continuation');
-            existing.text += part.text; existing.complete = part.complete;
+            if (existing.role !== part.role || part.offset + part.text.length !== existing.offset) throw new Error('invalid_continuation');
+            existing.text = part.text + existing.text; existing.offset = part.offset; existing.complete = existing.complete || part.complete;
           } else {
-            if (part.offset !== 0) throw new Error('missing_message_start');
             messages.push({ ...part });
           }
         }
-        if (data.nextCursor === null && messages.some(m => !m.complete)) throw new Error('incomplete_body');
+        if (!initial) {
+          const older = data.messages.map(part => messages.find(m => m.id === part.id)).filter(Boolean);
+          const olderIds = new Set(older.map(m => m.id));
+          this.workspaceMessages.forEach(message => { if (!olderIds.has(message.id)) older.push(message); });
+          messages.splice(0, messages.length, ...older);
+        }
+        if (data.nextCursor === null && messages.some(m => m.offset !== 0 || !m.complete)) throw new Error('incomplete_body');
         this.workspaceMessages = messages; this.workspaceCursor = data.nextCursor;
         this.workspaceHistoryComplete = data.nextCursor === null;
+        this.workspaceLatestLoaded = messages.length > 0 && messages.at(-1).complete && messages.at(-1).offset === 0;
         this.workspaceHistoryStatus = this.workspaceHistoryComplete
-          ? (messages.length ? '本次读取的会话正文已加载完毕。' : '这条会话还没有可展示的用户消息或 AI 回复。')
-          : '已读取部分正文，可继续加载。';
+          ? (messages.length ? '已到最早消息。' : '这条会话还没有可展示的用户消息或 AI 回复。')
+          : '向上滑动可加载更早消息。';
+        this.$nextTick(() => {
+          const element = this.$refs?.workspaceTranscript;
+          if (!element) return;
+          if (initial) element.scrollTop = element.scrollHeight;
+          else if (scroll.anchor?.isConnected) element.scrollTop += scroll.anchor.getBoundingClientRect().top - scroll.anchorTop;
+          else element.scrollTop = scroll.top + (element.scrollHeight - scroll.height);
+        });
       } catch {
         if (epoch === this.sessionEpoch && generation === this.sessionGeneration)
           this.workspaceHistoryStatus = '正文暂未读到。可再次读取同一页，不会发送模型任务。';

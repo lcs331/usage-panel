@@ -205,7 +205,7 @@
       this.sessionCwdConsent = false; this.sessionContextConsent = false;
       this.sessionTask = this.workspaceDrafts[this.workspaceDraftKey(id)] || '';
       this.workspaceUnread[this.workspaceDraftKey(id)] = false;
-      if (!options.keepMessages) { this.workspaceMessages = []; this.workspaceHistoryComplete = false; }
+      if (!options.keepMessages) { this.workspaceMessages = []; this.workspaceHistoryComplete = false; this.workspaceLatestLoaded = false; }
       this.workspaceCursor = null; this.workspaceHistoryStatus = '正在读取会话正文…';
       this.rememberWorkspace();
       try {
@@ -220,7 +220,7 @@
         this.workspaceCursor = reply.data.bodyVersion === 1 ? reply.data.nextMessageCursor : null;
         this.workspaceHistoryStatus = reply.data.bodyVersion === 1 ? '' : '电脑程序暂只支持短摘录，升级后可读取正文。';
         if (reply.data.bodyVersion === 1) {
-          if (this.workspaceCursor) await this.loadWorkspaceMessages({ preserveScroll, reset: !!options.keepMessages });
+          if (this.workspaceCursor) await this.loadWorkspaceMessages({ initial: true, preserveScroll, reset: !!options.keepMessages });
           else this.workspaceHistoryComplete = true;
         }
       } catch {
@@ -243,24 +243,37 @@
         if (reply.status !== 'messages' || data?.previewId !== preview || data.sourceThreadId !== source ||
           !Array.isArray(data.messages) || data.messages.length > 100 || (data.nextCursor !== null && typeof data.nextCursor !== 'string') || data.nextCursor === cursor)
           throw new Error('invalid_messages');
-        const messages = options.reset ? [] : this.workspaceMessages.map(message => ({ ...message }));
+        const initial = cursor === 'latest' || options.initial || this.workspaceMessages.length === 0;
+        const messages = initial ? [] : this.workspaceMessages.map(message => ({ ...message }));
         for (const part of data.messages) {
           if (typeof part.id !== 'string' || !['user', 'assistant'].includes(part.role) || typeof part.text !== 'string' ||
               !Number.isSafeInteger(part.offset) || part.offset < 0 || typeof part.complete !== 'boolean') throw new Error('invalid_message');
           const existing = messages.find(message => message.id === part.id);
           if (existing) {
-            if (existing.role !== part.role || existing.complete || existing.text.length !== part.offset) throw new Error('invalid_chunk');
-            existing.text += part.text; existing.complete = part.complete;
-          } else { if (part.offset !== 0) throw new Error('missing_chunk'); messages.push({ ...part }); }
+            if (existing.role !== part.role || part.offset + part.text.length !== existing.offset) throw new Error('invalid_chunk');
+            existing.text = part.text + existing.text; existing.offset = part.offset; existing.complete = existing.complete || part.complete;
+          } else { messages.push({ ...part }); }
         }
-        if (data.nextCursor === null && messages.some(message => !message.complete)) throw new Error('incomplete_messages');
+        if (!initial) {
+          const older = data.messages.map(part => messages.find(message => message.id === part.id)).filter(Boolean);
+          const olderIds = new Set(older.map(message => message.id));
+          this.workspaceMessages.forEach(message => { if (!olderIds.has(message.id)) older.push(message); });
+          messages.splice(0, messages.length, ...older);
+        }
+        if (data.nextCursor === null && messages.some(message => message.offset !== 0 || !message.complete)) throw new Error('incomplete_messages');
         this.workspaceMessages = messages; this.workspaceCursor = data.nextCursor; this.workspaceHistoryComplete = data.nextCursor === null;
-        this.workspaceHistoryStatus = this.workspaceHistoryComplete ? (messages.length ? '' : '暂无可展示的用户消息或 AI 回复。') : '已读取部分正文，可继续加载。';
+        this.workspaceLatestLoaded = messages.length > 0 && messages.at(-1).complete && messages.at(-1).offset === 0;
+        this.workspaceHistoryStatus = this.workspaceHistoryComplete ? (messages.length ? '已到最早消息。' : '暂无可展示的用户消息或 AI 回复。') : '向上滑动可加载更早消息。';
         if (this.workspaceHistoryComplete && this.workspaceRun?.childId === source && terminal(this.workspaceRun.state)) this.workspaceRun.historyLoaded = true;
         this.afterWorkspaceRender(() => {
           const element = this.$refs?.workspaceTranscript;
           if (!element) return;
-          if (options.preserveScroll || !scroll.atBottom) element.scrollTop = scroll.top;
+          if (initial && !options.preserveScroll) element.scrollTop = element.scrollHeight;
+          else if (cursor !== 'latest' && !initial) {
+            if (scroll.anchor?.isConnected) element.scrollTop += scroll.anchor.getBoundingClientRect().top - scroll.anchorTop;
+            else element.scrollTop = scroll.top + (element.scrollHeight - scroll.height);
+          }
+          else if (options.preserveScroll || !scroll.atBottom) element.scrollTop = scroll.top;
           else element.scrollTop = element.scrollHeight;
         });
       } catch {
@@ -522,12 +535,24 @@
     afterWorkspaceRender(callback) { if (this.$nextTick) this.$nextTick(callback); else callback(); },
     workspaceScrollSnapshot() {
       const element = this.$refs?.workspaceTranscript;
-      return element ? { top: element.scrollTop, height: element.scrollHeight, atBottom: element.scrollHeight - element.scrollTop - element.clientHeight < 80 }
-        : { top: 0, height: 0, atBottom: this.workspaceAtBottom };
+      if (!element) return { top: 0, height: 0, atBottom: this.workspaceAtBottom, anchor: null, anchorTop: 0 };
+      if (typeof element.getBoundingClientRect !== 'function')
+        return { top: element.scrollTop || 0, height: element.scrollHeight || 0,
+          atBottom: (element.scrollHeight || 0) - (element.scrollTop || 0) - (element.clientHeight || 0) < 80,
+          anchor: null, anchorTop: 0 };
+      const top = element.getBoundingClientRect().top;
+      const anchor = typeof element.querySelectorAll === 'function'
+        ? [...element.querySelectorAll('.conversation-message')].find(message => message.getBoundingClientRect().bottom > top) : null;
+      return { top: element.scrollTop, height: element.scrollHeight,
+        atBottom: element.scrollHeight - element.scrollTop - element.clientHeight < 80,
+        anchor, anchorTop: anchor?.getBoundingClientRect().top ?? 0 };
     },
     onWorkspaceScroll() {
       this.workspaceAtBottom = this.workspaceScrollSnapshot().atBottom;
       if (this.workspaceAtBottom) this.workspaceNewReply = false;
+      const element = this.$refs?.workspaceTranscript;
+      if (element && this.workspaceCursor && !this.workspaceReadBusy && element.scrollTop <= 72)
+        this.loadWorkspaceMessages({ older: true });
     },
     scrollWorkspaceBottom() {
       this.workspaceAtBottom = true; this.workspaceNewReply = false;
