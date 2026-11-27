@@ -343,8 +343,9 @@
       const source = child && !child.parentThreadId && child.canIntervene;
       if ((!source && !child?.canContinue) || !this.workspaceHistoryReady || !this.sessionContextConsent || !this.sessionTask.trim() || this.workspaceDeviceBlocked || this.sessionBusy) return;
       const target = child.sourceThreadId;
+      const desktopConsent = source && document.querySelector('#session-source-consent')?.getAttribute('data-desktop-queue-consent') === 'desktop-queue-v1';
       return this.startWorkspaceRun('continue', { sourceThreadId: source ? target : child.parentThreadId, jobId: target, childId: target,
-        previewId: child.previewId, cwd: child.cwd });
+        previewId: child.previewId, cwd: child.cwd, ...(desktopConsent ? { cursor: 'desktop-queue-v1' } : {}) });
     },
     async startWorkspaceRun(operation, details) {
       const prompt = this.sessionTask.trim(), device = this.sessionDevice;
