@@ -126,6 +126,12 @@
         this.projectWorkspaceRun();
         if (this.sessionListReady) {
           if (!this.sessionRows.length) await this.refreshWorkspaceSessions();
+          const target = this.workspaceRequestedSession();
+          if (target) {
+            await this.openWorkspaceSession(target);
+            const url = new URL(window.location.href); url.searchParams.delete('sessionId');
+            window.history.replaceState({}, '', url);
+          }
           if (this.sessionSelected && !this.workspaceMessages.length) await this.openWorkspaceSession(this.sessionSelected);
         }
       }
@@ -154,6 +160,10 @@
         jobId: run.jobId, state: run.state };
     },
     async listPhoneSessions(next = false) { return this.refreshWorkspaceSessions(next); },
+    workspaceRequestedSession() {
+      const id = new URLSearchParams(window.location.search).get('sessionId') || '';
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) ? id : '';
+    },
     async refreshWorkspaceSessions(next = false) {
       if (!this.sessionDevice || this.workspaceReadBusy) return;
       const device = this.sessionDevice, epoch = this.sessionEpoch;
@@ -203,6 +213,10 @@
         if (sequence !== this.workspaceReadSequence || device !== this.sessionDevice || epoch !== this.sessionEpoch) return;
         if (reply.status !== 'previewed' || reply.data?.sourceThreadId !== id) throw new Error('preview_unavailable');
         this.sessionPreview = reply.data; this.sessionCwd = reply.data.cwd;
+        const known = this.sessionRows.find(row => row.sourceThreadId === id);
+        if (known) { if (reply.data.name) known.name = reply.data.name; }
+        else this.sessionRows.unshift({ sourceThreadId: id, name: reply.data.name || id,
+          kind: reply.data.parentThreadId ? 'derived' : 'source', parentThreadId: reply.data.parentThreadId || null });
         this.workspaceCursor = reply.data.bodyVersion === 1 ? reply.data.nextMessageCursor : null;
         this.workspaceHistoryStatus = reply.data.bodyVersion === 1 ? '' : '电脑程序暂只支持短摘录，升级后可读取正文。';
         if (reply.data.bodyVersion === 1) {
@@ -307,8 +321,10 @@
     },
     continuePhoneSession() {
       const child = this.sessionPreview;
-      if (!child?.canContinue || !this.workspaceHistoryReady || !this.sessionContextConsent || !this.sessionTask.trim() || this.workspaceDeviceBlocked || this.sessionBusy) return;
-      return this.startWorkspaceRun('continue', { sourceThreadId: child.parentThreadId, jobId: child.sourceThreadId, childId: child.sourceThreadId,
+      const source = child && !child.parentThreadId && child.canIntervene;
+      if ((!source && !child?.canContinue) || !this.workspaceHistoryReady || !this.sessionContextConsent || !this.sessionTask.trim() || this.workspaceDeviceBlocked || this.sessionBusy) return;
+      const target = child.sourceThreadId;
+      return this.startWorkspaceRun('continue', { sourceThreadId: source ? target : child.parentThreadId, jobId: target, childId: target,
         previewId: child.previewId, cwd: child.cwd });
     },
     async startWorkspaceRun(operation, details) {
