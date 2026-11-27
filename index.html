@@ -421,7 +421,7 @@
         <section class="workspace-conversation" aria-labelledby="workspace-title">
           <header class="workspace-header">
             <button class="btn workspace-menu" :aria-expanded="workspaceSidebarOpen" @click="workspaceSidebarOpen = !workspaceSidebarOpen">会话列表</button>
-            <div><h2 id="workspace-title">{{ workspaceTitle }}</h2><p>{{ sessionDeviceName }} · {{ workspaceView === 'task' ? '本次发送与回复' : (sessionPreview?.canContinue ? '派生子会话，可继续对话' : sessionPreview?.canIntervene ? '原会话，可在手机接续' : '电脑会话正文') }}</p></div>
+            <div><h2 id="workspace-title">{{ workspaceTitle }}</h2><p>{{ sessionDeviceName }} · {{ workspaceView === 'task' ? '本次发送与回复' : (sessionPreview?.canContinue ? '派生子会话，可继续对话' : sessionPreview?.canIntervene ? '原会话，可在手机接续' : '电脑会话正文') }}<template v-if="workspaceLiveStatus && workspaceView === 'source'"> · {{ workspaceLiveStatus }}</template></p></div>
           </header>
           <div v-if="workspaceSourceId" class="workspace-source"><button class="text-btn" @click="openWorkspaceSession(workspaceSourceId)">来源：{{ sessionTitle(workspaceSourceId) }}</button><button class="text-btn" @click="workspaceRenameText = workspaceSelectedRow?.name || ''; workspaceRenameOpen = !workspaceRenameOpen">改名</button><button class="text-btn" :disabled="workspaceReadBusy" @click="changeWorkspaceCatalog('remove')">从面板移除</button></div>
           <form v-if="workspaceRenameOpen" class="workspace-rename" @submit.prevent="changeWorkspaceCatalog('rename')"><label for="workspace-name">会话名称</label><input id="workspace-name" v-model="workspaceRenameText" maxlength="56" /><button class="btn" :disabled="workspaceReadBusy">保存</button><button type="button" class="text-btn" @click="workspaceRenameOpen = false">取消</button></form>

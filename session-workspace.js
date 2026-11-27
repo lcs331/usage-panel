@@ -8,6 +8,7 @@
       workspaceComputerState: 'idle', workspaceActiveThread: '', workspaceAtBottom: true,
       workspaceNewReply: false, workspaceCopyStatus: '', workspaceRenameOpen: false, workspaceRenameText: '',
       workspaceClock: Date.now(), workspaceClockTimer: null, workspaceLifecycleReady: false,
+      workspaceLiveTimer: null, workspaceLiveFlight: null, workspaceLivePending: null, workspaceLiveVersion: '', workspaceLiveStatus: '',
       workspaceOwner: '', workspaceRunHistory: [], workspaceRemoved: {}, workspaceServerRequest: '', workspaceServerJob: '', workspacePreparedDrafts: {} };
   };
   Object.assign(PhoneWorkspace.computed, {
@@ -118,6 +119,7 @@
       throw new Error('receipt_timeout');
     },
     resetPhoneSessions() {
+      this.stopWorkspaceLive(); this.workspaceLiveVersion = ''; this.workspaceLivePending = null;
       this.workspaceReadSequence++;
       base.resetPhoneSessions.call(this);
       this.workspaceReadBusy = false; this.workspaceRenameOpen = false;
@@ -201,6 +203,7 @@
     saveWorkspaceDraft() { if (this.sessionSelected) this.workspaceDrafts[this.workspaceDraftKey()] = this.sessionTask; },
     async openWorkspaceSession(id, options = {}) {
       if (!this.sessionDevice || !id) return;
+      this.stopWorkspaceLive(); this.workspaceLiveVersion = ''; this.workspaceLivePending = null;
       this.saveWorkspaceDraft();
       const preserveScroll = !!options.preserveScroll;
       const sequence = ++this.workspaceReadSequence, device = this.sessionDevice, epoch = this.sessionEpoch;
@@ -234,6 +237,115 @@
           this.workspaceHistoryStatus = '正文暂未读到，请重新读取；已有请求不会重发。';
       }
       if (!preserveScroll) { this.workspaceAtBottom = true; this.workspaceNewReply = false; this.scrollWorkspaceBottom(); }
+      if (sequence === this.workspaceReadSequence && device === this.sessionDevice && epoch === this.sessionEpoch) this.scheduleWorkspaceLive(0);
+    },
+    workspaceLiveActive() {
+      return this.signedIn !== false && this.tab === 'task' && document.visibilityState !== 'hidden' &&
+        !!this.sessionDevice && !!this.sessionSelected && this.workspaceView === 'source';
+    },
+    stopWorkspaceLive() {
+      clearTimeout(this.workspaceLiveTimer); this.workspaceLiveTimer = null; this.workspaceLiveFlight = null;
+    },
+    scheduleWorkspaceLive(delay = 2000) {
+      clearTimeout(this.workspaceLiveTimer); this.workspaceLiveTimer = null;
+      if (this.workspaceLiveActive()) this.workspaceLiveTimer = setTimeout(() => this.refreshWorkspaceLive(), delay);
+    },
+    async refreshWorkspaceLive() {
+      if (!this.workspaceLiveActive() || this.workspaceLiveFlight) return;
+      if (this.workspaceReadBusy) { this.scheduleWorkspaceLive(); return; }
+      clearTimeout(this.workspaceLiveTimer); this.workspaceLiveTimer = null;
+      const flight = { source: this.sessionSelected, device: this.sessionDevice, epoch: this.sessionEpoch,
+        sequence: this.workspaceReadSequence, owner: this.userId() };
+      this.workspaceLiveFlight = flight;
+      const sameContext = () => flight.source === this.sessionSelected && flight.device === this.sessionDevice &&
+        flight.epoch === this.sessionEpoch && flight.sequence === this.workspaceReadSequence && flight.owner === this.userId() && this.workspaceLiveActive();
+      const valid = () => this.workspaceLiveFlight === flight && sameContext();
+      let more = false;
+      try {
+        const pending = this.workspaceLivePending;
+        const reply = await this.workspaceCommand('preview', { sourceThreadId: flight.source,
+          ...(pending ? { previewId: pending.previewId, cursor: 'live-v1:' + pending.cursor } : { cursor: 'live-v1:' + this.workspaceLiveVersion }) }, flight.device);
+        if (!valid()) return;
+        const data = reply.data;
+        const updateCapabilities = () => {
+          const state = data?.liveState, preview = this.sessionPreview;
+          if (preview?.sourceThreadId === flight.source && state && state.cwd === preview.cwd && state.model === preview.model &&
+            state.provider === preview.provider && state.parentThreadId === preview.parentThreadId &&
+            typeof state.canContinue === 'boolean' && typeof state.canIntervene === 'boolean') {
+            preview.canContinue = state.canContinue; preview.canIntervene = state.canIntervene;
+          }
+        };
+        if (reply.status === 'unchanged' && data?.sourceThreadId === flight.source && data.liveVersion === this.workspaceLiveVersion) {
+          updateCapabilities(); this.workspaceLiveStatus = '正在自动同步'; return;
+        }
+        if (reply.status !== 'messages' || data?.sourceThreadId !== flight.source || typeof data.previewId !== 'string' ||
+          typeof data.liveVersion !== 'string' || !/^[A-F0-9]{64}$/.test(data.liveVersion) ||
+          !Array.isArray(data.messages) || data.messages.length > 100 || (data.nextCursor !== null && typeof data.nextCursor !== 'string') ||
+          pending && (data.previewId !== pending.previewId || data.liveVersion !== pending.version || data.nextCursor === pending.cursor)) throw new Error('invalid_live_page');
+        const batch = pending || { previewId: data.previewId, version: data.liveVersion, rows: [],
+          baseline: this.workspaceMessages.at(-1) ? { ...this.workspaceMessages.at(-1) } : null };
+        const rows = [];
+        for (const part of data.messages) {
+          if (typeof part.id !== 'string' || !['user', 'assistant'].includes(part.role) || typeof part.text !== 'string' ||
+            !Number.isSafeInteger(part.offset) || part.offset < 0 || typeof part.complete !== 'boolean' || rows.some(row => row.id === part.id)) throw new Error('invalid_live_message');
+          rows.push({ ...part });
+        }
+        for (const newer of batch.rows) {
+          const older = rows.find(row => row.id === newer.id);
+          if (older) {
+            if (older.role !== newer.role) throw new Error('invalid_live_chunk');
+            if (older.offset === newer.offset && older.text === newer.text) { older.complete ||= newer.complete; continue; }
+            if (older.offset + older.text.length !== newer.offset) throw new Error('invalid_live_chunk');
+            older.text += newer.text; older.complete = newer.complete;
+          } else rows.push(newer);
+        }
+        batch.rows = rows;
+        const overlap = batch.baseline && rows.find(row => row.id === batch.baseline.id);
+        const connected = overlap && overlap.offset === 0;
+        let needsBackfill = rows.some(row => row.offset !== 0 || !row.complete);
+        const done = data.nextCursor === null && (!batch.baseline || !!connected);
+        const fresh = rows.map(row => {
+          const old = this.workspaceMessages.find(value => value.id === row.id);
+          if (!old || row.offset === 0) return { ...row };
+          needsBackfill = true; // A matching suffix cannot prove that the old prefix is unchanged.
+          if (old.role !== row.role) throw new Error('live_role_changed');
+          const begin = Math.max(old.offset, row.offset), end = Math.min(old.offset + old.text.length, row.offset + row.text.length);
+          if (begin > end) { needsBackfill = true; return { ...old }; }
+          if (old.text.slice(begin - old.offset, end - old.offset) !== row.text.slice(begin - row.offset, end - row.offset)) { needsBackfill = true; return { ...old }; }
+          if (old.offset < row.offset) return { ...row, offset: old.offset, text: old.text.slice(0, row.offset - old.offset) + row.text };
+          return { ...row };
+        });
+        const ids = new Set(fresh.map(row => row.id));
+        const merged = [...this.workspaceMessages.filter(row => !ids.has(row.id)), ...fresh];
+        const changed = JSON.stringify(merged) !== JSON.stringify(this.workspaceMessages);
+        if (changed) {
+          const scroll = this.workspaceScrollSnapshot(); this.workspaceMessages = merged;
+          this.afterWorkspaceRender(() => {
+            if (!sameContext()) return;
+            const element = this.$refs?.workspaceTranscript;
+            if (element) {
+              if (scroll.atBottom) element.scrollTop = element.scrollHeight;
+              else if (scroll.anchor?.isConnected) element.scrollTop = scroll.top + scroll.anchor.getBoundingClientRect().top - scroll.anchorTop;
+              else element.scrollTop = scroll.top;
+            }
+          });
+          if (!scroll.atBottom) this.workspaceNewReply = true;
+        }
+        updateCapabilities();
+        this.workspaceLatestLoaded = !!this.workspaceMessages.length && this.workspaceMessages.at(-1).offset === 0 && this.workspaceMessages.at(-1).complete;
+        this.workspaceLiveStatus = '正在自动同步';
+        if (done && !needsBackfill) { this.workspaceLivePending = null; this.workspaceLiveVersion = data.liveVersion; }
+        else {
+          if (data.nextCursor === null) throw new Error('incomplete_live_prefix');
+          batch.cursor = data.nextCursor; this.workspaceLivePending = batch; more = true;
+        }
+      } catch {
+        if (valid()) { this.workspaceLivePending = null; this.workspaceLiveVersion = ''; this.workspaceLiveStatus = '同步暂不可用，正在重连'; }
+      } finally {
+        if (this.workspaceLiveFlight === flight) {
+          this.workspaceLiveFlight = null; this.scheduleWorkspaceLive(more ? 0 : 2000);
+        }
+      }
     },
     async previewPhoneSession() { return this.openWorkspaceSession(this.sessionSelected); },
     async loadWorkspaceMessages(options = {}) {
@@ -250,14 +362,18 @@
           !Array.isArray(data.messages) || data.messages.length > 100 || (data.nextCursor !== null && typeof data.nextCursor !== 'string') || data.nextCursor === cursor)
           throw new Error('invalid_messages');
         const initial = cursor === 'latest' || options.initial || this.workspaceMessages.length === 0;
-        const messages = initial ? [] : this.workspaceMessages.map(message => ({ ...message }));
+        const messages = options.reset ? [] : this.workspaceMessages.map(message => ({ ...message }));
         for (const part of data.messages) {
           if (typeof part.id !== 'string' || !['user', 'assistant'].includes(part.role) || typeof part.text !== 'string' ||
               !Number.isSafeInteger(part.offset) || part.offset < 0 || typeof part.complete !== 'boolean') throw new Error('invalid_message');
           const existing = messages.find(message => message.id === part.id);
           if (existing) {
-            if (existing.role !== part.role || part.offset + part.text.length !== existing.offset) throw new Error('invalid_chunk');
-            existing.text = part.text + existing.text; existing.offset = part.offset; existing.complete = existing.complete || part.complete;
+            if (existing.role !== part.role) throw new Error('invalid_chunk');
+            if (part.offset + part.text.length === existing.offset) {
+              existing.text = part.text + existing.text; existing.offset = part.offset; existing.complete = existing.complete || part.complete;
+            } else if (part.offset >= existing.offset && part.offset + part.text.length <= existing.offset + existing.text.length) {
+              // This immutable history chunk is already covered by a newer live body.
+            } else throw new Error('invalid_chunk');
           } else { messages.push({ ...part }); }
         }
         if (!initial) {
@@ -338,14 +454,30 @@
           !this.sessionContextConsent || !this.sessionTask.trim() || this.sessionCanRecover || this.workspaceDeviceBlocked || this.sessionBusy) return;
       return this.startWorkspaceRun('execute', { sourceThreadId: draft.sourceThreadId, jobId: draft.jobId, childId: draft.newThreadId, cwd: draft.cwd });
     },
-    continuePhoneSession() {
+    async continuePhoneSession() {
       const child = this.sessionPreview;
       const source = child && !child.parentThreadId && child.canIntervene;
       if ((!source && !child?.canContinue) || !this.workspaceHistoryReady || !this.sessionContextConsent || !this.sessionTask.trim() || this.workspaceDeviceBlocked || this.sessionBusy) return;
       const target = child.sourceThreadId;
+      const device = this.sessionDevice, epoch = this.sessionEpoch, sequence = this.workspaceReadSequence, prompt = this.sessionTask;
+      let freshPreview;
+      this.sessionBusy = true;
+      try {
+        // Live snapshots are read-only. Renew the separate consent preview before sending.
+        const reply = await this.workspaceCommand('preview', { sourceThreadId: target });
+        if (device !== this.sessionDevice || epoch !== this.sessionEpoch || sequence !== this.workspaceReadSequence ||
+          this.sessionTask !== prompt || !this.sessionContextConsent) return;
+        const fresh = reply.data;
+        if (reply.status !== 'previewed' || fresh?.sourceThreadId !== target || fresh.cwd !== child.cwd || fresh.model !== child.model ||
+          fresh.provider !== child.provider || (source ? !fresh.canIntervene : !fresh.canContinue)) {
+          this.sessionStatus = '会话状态或配置已变化，请等电脑空闲后重新确认。'; return;
+        }
+        freshPreview = fresh;
+      } catch { this.sessionStatus = '无法确认最新会话，消息尚未发送。'; return; }
+      finally { if (device === this.sessionDevice && epoch === this.sessionEpoch) this.sessionBusy = false; }
       const desktopConsent = source && document.querySelector('#session-source-consent')?.getAttribute('data-desktop-queue-consent') === 'desktop-queue-v1';
       return this.startWorkspaceRun('continue', { sourceThreadId: source ? target : child.parentThreadId, jobId: target, childId: target,
-        previewId: child.previewId, cwd: child.cwd, ...(desktopConsent ? { cursor: 'desktop-queue-v1' } : {}) });
+        previewId: freshPreview.previewId, cwd: child.cwd, ...(desktopConsent ? { cursor: 'desktop-queue-v1' } : {}) });
     },
     async startWorkspaceRun(operation, details) {
       const prompt = this.sessionTask.trim(), device = this.sessionDevice;
@@ -475,6 +607,7 @@
           if (this.sessionDevice === run.device) {
             this.projectWorkspaceRun();
             if (terminal(run.state)) this.workspaceComputerState = 'idle';
+            if (terminal(run.state)) this.scheduleWorkspaceLive(0);
           }
           if (!terminal(run.state) && run.state !== 'unknown') run.timer = setTimeout(() => this.queryWorkspaceRun(run), 3000);
         }
@@ -484,13 +617,10 @@
       if (!this.workspaceValid(run)) return;
       const viewing = run.device === this.sessionDevice && (this.sessionSelected === run.childId || this.workspaceView === 'task');
       if (!viewing) { this.workspaceUnread[run.device + ':' + run.childId] = true; return; }
-      const sequence = this.workspaceReadSequence, scroll = this.workspaceScrollSnapshot();
-      // Retain the result while a read-only refresh is unavailable.
-      if (this.workspaceView === 'task') this.workspaceMessages = this.workspaceRunHistory;
-      await this.openWorkspaceSession(run.childId, { keepMessages: true, preserveScroll: true });
-      if (this.workspaceReadSequence !== sequence + 1 || this.sessionSelected !== run.childId) return;
-      if (!run.historyLoaded) this.workspaceHistoryStatus = '回复已收到，正文读取暂不可用；可重新读取，消息不会重发。';
-      if (scroll.atBottom) this.scrollWorkspaceBottom(); else { this.workspaceNewReply = true; this.afterWorkspaceRender(() => { if (this.$refs?.workspaceTranscript) this.$refs.workspaceTranscript.scrollTop = scroll.top; }); }
+      this.projectWorkspaceRun();
+      if (this.workspaceView === 'task') { this.workspaceMessages = this.workspaceRunHistory; this.workspaceView = 'source'; }
+      this.scheduleWorkspaceLive(0);
+      if (this.workspaceAtBottom) this.scrollWorkspaceBottom(); else this.workspaceNewReply = true;
     },
     async checkPhoneSession() {
       this.restoreWorkspaceRuns();
@@ -638,14 +768,16 @@
       window.visualViewport?.addEventListener('scroll', updateViewport);
       window.addEventListener('resize', updateViewport); updateViewport();
       const resume = () => {
-        if (document.visibilityState === 'hidden') return;
+        if (document.visibilityState === 'hidden') { clearTimeout(this.workspaceLiveTimer); this.workspaceLiveTimer = null; return; }
         for (const run of Object.values(this.workspaceRuns)) if (!terminal(run.state)) this.queryWorkspaceRun(run, true);
+        this.scheduleWorkspaceLive(0);
       };
       document.addEventListener('visibilitychange', resume); window.addEventListener('online', resume);
       const tick = () => { this.workspaceClock = Date.now(); if (this.signedIn !== false) this.workspaceClockTimer = setTimeout(tick, 1000); };
       tick();
     },
     clearWorkspaceRuntime() {
+      this.stopWorkspaceLive(); this.workspaceLiveVersion = ''; this.workspaceLivePending = null;
       for (const run of Object.values(this.workspaceRuns)) { clearTimeout(run.timer); clearTimeout(run.expiryTimer); }
       clearTimeout(this.workspaceClockTimer); this.workspaceClockTimer = null;
       this.workspaceRuns = {}; this.workspaceDrafts = {}; this.workspaceUnread = {}; this.workspaceRunHistory = []; this.workspaceRemoved = {}; this.workspacePreparedDrafts = {};

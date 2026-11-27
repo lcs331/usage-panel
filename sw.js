@@ -1,5 +1,5 @@
 // The shell cache: the page opens offline, the data still needs the network.
-const CACHE = 'usage-panel-workspace-w01-w05-v5';
+const CACHE = 'usage-panel-workspace-w01-w05-v6';
 const SHELL = [
   './',
   './index.html',
