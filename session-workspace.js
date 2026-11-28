@@ -457,7 +457,7 @@
     async continuePhoneSession() {
       const child = this.sessionPreview;
       const source = child && !child.parentThreadId && child.canIntervene;
-      if ((!source && !child?.canContinue) || !this.workspaceHistoryReady || !this.sessionContextConsent || !this.sessionTask.trim() || this.workspaceDeviceBlocked || this.sessionBusy) return;
+      if ((!source && !child?.canContinue) || !this.workspaceHistoryReady || (source && !this.sessionContextConsent) || !this.sessionTask.trim() || this.workspaceDeviceBlocked || this.sessionBusy) return;
       const target = child.sourceThreadId;
       const device = this.sessionDevice, epoch = this.sessionEpoch, sequence = this.workspaceReadSequence, prompt = this.sessionTask;
       let freshPreview;
@@ -466,7 +466,7 @@
         // Live snapshots are read-only. Renew the separate consent preview before sending.
         const reply = await this.workspaceCommand('preview', { sourceThreadId: target });
         if (device !== this.sessionDevice || epoch !== this.sessionEpoch || sequence !== this.workspaceReadSequence ||
-          this.sessionTask !== prompt || !this.sessionContextConsent) return;
+          this.sessionTask !== prompt || (source && !this.sessionContextConsent)) return;
         const fresh = reply.data;
         if (reply.status !== 'previewed' || fresh?.sourceThreadId !== target || fresh.cwd !== child.cwd || fresh.model !== child.model ||
           fresh.provider !== child.provider || (source ? !fresh.canIntervene : !fresh.canContinue)) {
